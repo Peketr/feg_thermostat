@@ -6,6 +6,11 @@
 #include "zigbee_helpers.h"
 #include "start_image.h"
 #include "mikroe_ssd1351_image.h"
+#include "sl_sleeptimer.h"
+
+
+extern bool decommission_started;
+extern uint32_t decommission_start_time;
 
 static uint16_t rgb565_to_rbg565(uint16_t color)
 {
@@ -53,6 +58,7 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
   if (!heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);
   } else if (open_valves == 0) {
+    glib_set_text_color(glib_context,rgb565_to_rbg565(0x001f)); //blue
     glib_draw_string(glib_context, "Idle", 0, 0);
   }else if (open_valves == 1){
     glib_set_text_color(glib_context,rgb565_to_rbg565(0xfce0)); //orange
@@ -67,11 +73,14 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
   if (steering_in_progress()) {
     glib_set_text_color(glib_context,rgb565_to_rbg565(0xfce0)); //orange
     glib_draw_string(glib_context, "Connecting", 65, 0);
+  } else if (decommission_started && sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) > decommission_start_time + 3000){
+    glib_set_text_color(glib_context,rgb565_to_rbg565(0xf800)); //red
+    glib_draw_string(glib_context, "Disconnecting", 50, 0);
   } else if (on_network()){
     glib_set_text_color(glib_context,rgb565_to_rbg565(0x07e0)); //green
     glib_draw_string(glib_context, "Connected", 65, 0);
   } else {
-    glib_set_text_color(glib_context,0xf800); //red
+    glib_set_text_color(glib_context,0xffff); //white
     glib_draw_string(glib_context, "Disconnected", 55, 0);
   }
   glib_set_text_color(glib_context,0xffff); //white

@@ -50,6 +50,8 @@ sl_zigbee_af_event_t thermostat_tick_event;
 void thermostat_tick();
 
 bool retrigger = false;
+bool decommission_started = false;
+uint32_t decommission_start_time = 0;
 
 glib_context_t glib_context;
 
@@ -97,6 +99,14 @@ void sl_button_on_change(const sl_button_t *handle){
     }
   }
 
+  if (handle == &sl_button_btnc){
+    if (on_network() && handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED){
+      decommission_started = true;
+      decommission_start_time = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
+    } else {
+      decommission_started = false;
+    }
+  }
   if (handle == &sl_button_btna){
     sl_zigbee_app_debug_print("Button A ");
   } else if (handle == &sl_button_btnb){
@@ -122,7 +132,6 @@ uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
   //Actuate Heating
 
   uint8_t valves_to_open = 0;
-  static uint32_t time_of_last_change = 0;
 
   if ( enable ){
     if (current_temp < target_temp - 50){
@@ -153,7 +162,6 @@ uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
     default:
       sl_led_turn_off(&sl_led_heat1);
       sl_led_turn_off(&sl_led_heat2);
-      time_of_last_change = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
       break;  
   }
 
@@ -259,10 +267,7 @@ void app_process_action(void)
             set_system_mode(!heating_enabled);
           break;
         case BTNC:
-          if (on_network() && button_pressed_very_long[i]) {
-            sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
-            retrigger = true;
-          } else {
+          if (!on_network()) {
             sl_zigbee_af_network_steering_start();
             retrigger = true;
           }
@@ -275,6 +280,14 @@ void app_process_action(void)
   if (ran_once){
     sl_zigbee_af_event_set_inactive(&thermostat_tick_event);
     sl_zigbee_af_event_set_active(&thermostat_tick_event);
+  }
+  if (decommission_started && sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) > decommission_start_time + 3000){
+    retrigger = true;
+  }
+  if (decommission_started && sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) > decommission_start_time + 10000){
+    sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
+    decommission_started = false;
+    retrigger = true;
   }
   
 }

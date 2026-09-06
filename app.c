@@ -1,19 +1,3 @@
-/***************************************************************************//**
- * @file app.c
- * @brief Callbacks implementation and application specific code.
- *******************************************************************************
- * # License
- * <b>Copyright 2021 Silicon Laboratories Inc. www.silabs.com</b>
- *******************************************************************************
- *
- * The licensor of this software is Silicon Laboratories Inc. Your use of this
- * software is governed by the terms of Silicon Labs Master Software License
- * Agreement (MSLA) available at
- * www.silabs.com/about-us/legal/master-software-license-agreement. This
- * software is distributed to you in Source Code format and is governed by the
- * sections of the MSLA applicable to Source Code.
- *
- ******************************************************************************/
 
 #include "app/framework/include/af.h"
 #include "network-formation.h"
@@ -30,6 +14,9 @@
 #include "zigbee_app_framework_event.h"
 #include "zigbee_common_callback_dispatcher.h"
 #include "network-steering.h"
+
+#include "zigbee_helpers.h"
+#include "gui.h"
 
 bool steering = false;
 
@@ -61,18 +48,12 @@ uint8_t button_pressed_id[16] = {BTN_NONE};
 bool button_pressed_long[16] = {false};
 bool button_pressed_very_long[16] = {false};
 
-// Display
-#include "mikroe_ssd1351.h"
-#include "glib.h"
-#include "start_image.h"
-
-#define THERMOSTAT_ENDPOINT 1
 sl_zigbee_af_event_t thermostat_tick_event;
 void thermostat_tick();
 
-static bool retrigger = false;
+bool retrigger = false;
 
-static glib_context_t glib_context;
+glib_context_t glib_context;
 
 uint8_t fetch_btn_id(const sl_button_t* handle){
   if (handle == &sl_button_btna){
@@ -139,112 +120,6 @@ void sl_button_on_change(const sl_button_t *handle){
 }
 
 
-void update_measurement(uint32_t rh_data, int32_t temp_data){
-  
-  int16_t temp_to_send = temp_data / 10;
-  uint16_t rh_to_send = rh_data / 10;
-
-  sl_zigbee_af_status_t status =
-    sl_zigbee_af_write_server_attribute(
-      THERMOSTAT_ENDPOINT,
-      ZCL_THERMOSTAT_CLUSTER_ID,
-      ZCL_LOCAL_TEMPERATURE_ATTRIBUTE_ID,
-      (uint8_t *)&temp_to_send,
-      ZCL_INT16S_ATTRIBUTE_TYPE);
-
-  if (status)
-    sl_zigbee_app_debug_println("Thermostat measured value update error: 0x%x",status);
-
-  status =
-    sl_zigbee_af_write_server_attribute(
-      THERMOSTAT_ENDPOINT,
-      ZCL_TEMP_MEASUREMENT_CLUSTER_ID,
-      ZCL_TEMP_MEASURED_VALUE_ATTRIBUTE_ID,
-      (uint8_t *)&temp_to_send,
-      ZCL_INT16S_ATTRIBUTE_TYPE);
-
-  if (status)
-    sl_zigbee_app_debug_println("Temperature measured value update error: 0x%x",status);
-
-  status =
-    sl_zigbee_af_write_server_attribute(
-      THERMOSTAT_ENDPOINT,
-      ZCL_RELATIVE_HUMIDITY_MEASUREMENT_CLUSTER_ID,
-      ZCL_RELATIVE_HUMIDITY_MEASURED_VALUE_ATTRIBUTE_ID,
-      (uint8_t *)&rh_to_send,
-      ZCL_INT16U_ATTRIBUTE_TYPE);
-
-  if (status)
-    sl_zigbee_app_debug_println("RH measured value update error: 0x%x",status);
-}
-
-sl_zigbee_af_status_t set_target_temp(int16_t target_temp){
-  if (target_temp < 700 || target_temp > 3000)
-    return SL_ZIGBEE_ZCL_STATUS_INVALID_VALUE;
-  sl_zigbee_af_status_t status = sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
-                                                                      ZCL_THERMOSTAT_CLUSTER_ID,
-                                                                      ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID,
-                                                                      (uint8_t*)&target_temp,
-                                                                      ZCL_INT16S_ATTRIBUTE_TYPE);
-  if (status)
-    sl_zigbee_app_debug_println("Error setting setpoint: 0x%x",status);
-  return status;
-}
-
-sl_zigbee_af_status_t set_system_mode(bool enable_heating){
-  uint8_t system_mode = (enable_heating)?(0x04):(0x00);
-  sl_zigbee_app_debug_println("Setting system mode to 0x%x",system_mode);
-  sl_zigbee_af_status_t status = sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
-                                                                      ZCL_THERMOSTAT_CLUSTER_ID,
-                                                                      ZCL_SYSTEM_MODE_ATTRIBUTE_ID,
-                                                                      (uint8_t*)&system_mode,
-                                                                      ZCL_ENUM8_ATTRIBUTE_TYPE);
-  if (status)
-    sl_zigbee_app_debug_println("Error setting system mode: 0x%x",status);
-  return status;
-}
-
-
-sl_zigbee_af_status_t get_target(int16_t *target_temp,uint8_t *system_mode){
-  
-  sl_zigbee_af_status_t status = sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
-                                                         ZCL_THERMOSTAT_CLUSTER_ID,
-                                                         ZCL_SYSTEM_MODE_ATTRIBUTE_ID,
-                                                         (uint8_t*) system_mode,
-                                                         sizeof(system_mode));
-  if (status) 
-    return status;
-
-  status = sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
-                                                         ZCL_THERMOSTAT_CLUSTER_ID,
-                                                         ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID,
-                                                         (uint8_t*) target_temp,
-                                                         sizeof(target_temp));
-  
-
-  return status;
-}
-
-void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
-                                                sl_zigbee_af_cluster_id_t clusterId,
-                                                sl_zigbee_af_attribute_id_t attributeId,
-                                                int8u mask,
-                                                int16u manufacturerCode,
-                                                int8u type,
-                                                int8u size,
-                                                int8u* value)
-{
-  UNUSED_VAR(mask);
-  UNUSED_VAR(manufacturerCode);
-  UNUSED_VAR(type);
-  UNUSED_VAR(size);
-  UNUSED_VAR(value);
-
-  if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_CLUSTER_ID && (attributeId== ZCL_SYSTEM_MODE_ATTRIBUTE_ID || attributeId == ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID)){
-    retrigger = true;
-  }
-}
-
 uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
   //Actuate Heating
 
@@ -288,40 +163,7 @@ uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
   return valves_to_open;
 }
 
-void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled){
-  glib_clear(glib_context);
-  if(heating_enabled){
-    glib_draw_char(glib_context,10,20,48+target_temp/1000,0xFFFF,0x0000,4,4);
-    glib_draw_char(glib_context,34,20,48+(target_temp/100%10),0xFFFF,0x0000,4,4);
-    glib_draw_char(glib_context,58,20,'.',0xFFFF,0x0000,4,4);
-    glib_draw_char(glib_context,82,20,48+(target_temp/10%10),0xFFFF,0x0000,4,4);
-  }
 
-  glib_draw_char(glib_context,10,60,48+current_temp/1000,0xFFFF,0x0000,4,4);
-  glib_draw_char(glib_context,34,60,48+(current_temp/100%10),0xFFFF,0x0000,4,4);
-  glib_draw_char(glib_context,58,60,'.',0xFFFF,0x0000,4,4);
-  glib_draw_char(glib_context,82,60,48+(current_temp/10%10),0xFFFF,0x0000,4,4);
-
-  if (!heating_enabled){
-    glib_draw_string(glib_context, "Off", 0, 0);
-  } else if (open_valves == 0) {
-    glib_draw_string(glib_context, "Idle", 0, 0);
-  }else if (open_valves == 1){
-    glib_draw_string(glib_context, "Half", 0, 0);
-  }else if (open_valves == 2){
-    glib_draw_string(glib_context, "Full", 0, 0);
-  }
-
-  if (steering) {
-    glib_draw_string(glib_context, "Connecting", 65, 0);
-  } else if (sl_zigbee_stack_is_up() && sl_zigbee_network_state() == SL_ZIGBEE_JOINED_NETWORK){
-    glib_draw_string(glib_context, "Connected", 65, 0);
-  } else {
-    glib_draw_string(glib_context, "Disconnected", 40, 0);
-  }
-  
-  glib_update_display();
-}
 
 // #######################################################################
 // MAIN OPERATION ########################################################
@@ -354,55 +196,20 @@ void thermostat_tick(){
   bool enable_heating = status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && sc == SL_STATUS_OK && system_mode == 0x04;
   uint8_t open_valves = actuate_heating(current_temp, target_temp,enable_heating);
 
+  // Update relay state to gateway
+  update_running_state(open_valves);
+
   //Update Display
   draw_display(&glib_context, target_temp, current_temp, open_valves,enable_heating);
 
 
-  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 10000);
+  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 5000);
 }
-
-/** @brief Complete network steering.
- *
- * This callback is fired when the Network Steering plugin is complete.
- *
- * @param status On success this will be set to SL_STATUS_OK to indicate a
- * network was joined successfully. On failure this will be the status code of
- * the last join or scan attempt. Ver.: always
- *
- * @param totalBeacons The total number of 802.15.4 beacons that were heard,
- * including beacons from different devices with the same PAN ID. Ver.: always
- * @param joinAttempts The number of join attempts that were made to get onto
- * an open Zigbee network. Ver.: always
- *
- * @param finalState The finishing state of the network steering process. From
- * this, one is able to tell on which channel mask and with which key the
- * process was complete. Ver.: always
- */
-void sl_zigbee_af_network_steering_complete_cb(sl_status_t status,
-                                               uint8_t totalBeacons,
-                                               uint8_t joinAttempts,
-                                               uint8_t finalState)
-{
-  UNUSED_VAR(totalBeacons);
-  UNUSED_VAR(joinAttempts);
-  UNUSED_VAR(finalState);
-  sl_zigbee_app_debug_println("%s network %s: 0x%02X", "Join", "complete", status);
-  steering = false;
-}
-
-/** @brief
- *
- * Application framework equivalent of ::sl_zigbee_radio_needs_calibrating_handler
- */
-void sl_zigbee_af_radio_needs_calibrating_cb(void)
-{
-  sl_mac_calibrate_current_channel();
-}
-
 
 void handle_button_press(){
   
 }
+
 
 // APPLICATION FRAMEWORK FUNCTIONS
 
@@ -416,22 +223,10 @@ void app_init(){
   
   sl_zigbee_af_event_init(&thermostat_tick_event, thermostat_tick);
   
-  //  OLED initialization.
-  sc = mikroe_ssd1351_init(sl_spidrv_inst0_handle);
-  if (sc) {
-    sl_zigbee_app_debug_println("Error initializing OLED> 0x%x", sc);
-  } else {
-    glib_init(&glib_context);
-    glib_set_bg_color(&glib_context, 0x0000);
-    glib_set_text_color(&glib_context, 0xFFFF);
-    glib_enable_display(true);
-    
-    mikroe_ssd1351_image(ppcat128x128, 0, 0);
-    glib_update_display();  
-    
-  }
+  oled_init(&glib_context);
+  retrigger = false;
   
-  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 1000);
+  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 10000);
 
 }
 

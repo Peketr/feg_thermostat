@@ -19,7 +19,7 @@
   "package": [
     {
       "pathRelativity": "relativeToZap",
-      "path": "..\\..\\..\\..\\..\\.silabs\\slt\\installs\\conan\\p\\simpl508ee6c1a6569\\p\\zigbee\\app\\zcl\\zcl-zap.json",
+      "path": "../../../../../.silabs/slt/installs/conan/p/simpl508ee6c1a6569/p/zigbee/app/zcl/zcl-zap.json",
       "type": "zcl-properties",
       "category": "zigbee",
       "version": 1,
@@ -27,7 +27,7 @@
     },
     {
       "pathRelativity": "relativeToZap",
-      "path": "..\\..\\..\\..\\..\\.silabs\\slt\\installs\\conan\\p\\simpl508ee6c1a6569\\p\\zigbee\\app\\framework\\gen-template\\gen-templates.json",
+      "path": "../../../../../.silabs/slt/installs/conan/p/simpl508ee6c1a6569/p/zigbee/app/framework/gen-template/gen-templates.json",
       "type": "gen-templates-json",
       "category": "zigbee",
       "version": "zigbee-v0"
@@ -294,22 +294,6 @@
               "singleton": 0,
               "bounded": 0,
               "defaultValue": "0x00",
-              "reportable": 0,
-              "minInterval": 1,
-              "maxInterval": 65534,
-              "reportableChange": 0
-            },
-            {
-              "name": "hvac relay state",
-              "code": 41,
-              "mfgCode": null,
-              "side": "server",
-              "type": "bitmap16",
-              "included": 1,
-              "storageOption": "RAM",
-              "singleton": 0,
-              "bounded": 0,
-              "defaultValue": "",
               "reportable": 0,
               "minInterval": 1,
               "maxInterval": 65534,

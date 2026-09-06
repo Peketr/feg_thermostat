@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="ASCII"?>
 <model:MDescriptors xmlns:model="http://www.silabs.com/ss/Studio.ecore">
   <descriptors name="zigbee_minimal_thermostat">
-    <properties key="projectCommon.sdkId" value="com.silabs.sdk.stack.sisdk:2026.6.0._-4090784872374425996"/>
-    <properties key="universalConfig.relativeWorkspacePath" value="../zigbee_minimal_thermostat.slcw"/>
+    <properties key="projectCommon.sdkId" value="com.silabs.sdk.stack.sisdk:2026.6.0._-21122408642374425996"/>
+    <properties key="universalConfig.relativeWorkspacePath" value="..\zigbee_minimal_thermostat.slcw"/>
     <properties key="universalConfig.generationDirectory" value=""/>
     <properties key="universalConfig.toolchainCompatibility" value="iar llvm gcc"/>
     <properties key="projectCommon.overwriteCopiedSources" value="false"/>
@@ -14,4 +14,4 @@
     <properties key="projectCommon.importModeId" value="COPY"/>
     <properties key="universalConfig.compSelProjInstanceId" value="1788383277441"/>
   </descriptors>
-</model:MDescriptors>
+</model:MDescriptors>

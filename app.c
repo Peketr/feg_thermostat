@@ -264,7 +264,11 @@ void app_process_action(void)
           break;
         case BTNA:
           if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
-            set_system_mode(!heating_enabled);
+            set_system_mode(true);
+          break;
+        case BTNB:
+          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
+            set_system_mode(false);
           break;
         case BTNC:
           if (!on_network()) {

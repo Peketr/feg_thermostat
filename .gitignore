@@ -1,5 +1,4 @@
 autogen/
-simplicity_sdk*/
 .projectlinkstore
 cmake_gcc/build/
 *.cmake

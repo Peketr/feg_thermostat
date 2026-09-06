@@ -1,0 +1,534 @@
+/***************************************************************************//**
+ * @file sl_rail_mux.h
+ * @brief RAIL Multiplexer APIs, types, macros and globals.
+ *******************************************************************************
+ * # License
+ * <b>Copyright 2022 Silicon Laboratories Inc. www.silabs.com</b>
+ *******************************************************************************
+ *
+ * The licensor of this software is Silicon Laboratories Inc. Your use of this
+ * software is governed by the terms of Silicon Labs Master Software License
+ * Agreement (MSLA) available at
+ * www.silabs.com/about-us/legal/master-software-license-agreement. This
+ * software is distributed to you in Source Code format and is governed by the
+ * sections of the MSLA applicable to Source Code.
+ *
+ ******************************************************************************/
+
+#ifndef RAIL_MUX_H
+#define RAIL_MUX_H
+
+#include PLATFORM_HEADER
+#include "sl_status.h"
+
+/* Three slots: two primary stacks (0,1) + optional aux/manual (2). Override for 2-context legacy builds. */
+#ifndef SL_RAIL_MUX_SUPPORTED_PROTOCOL_COUNT
+#define SL_RAIL_MUX_SUPPORTED_PROTOCOL_COUNT 3
+#endif
+#define SUPPORTED_PROTOCOL_COUNT SL_RAIL_MUX_SUPPORTED_PROTOCOL_COUNT
+
+// Global flags
+#define RAIL_MUX_FLAGS_IEEE802154_INIT_COMPLETED                          0x0004
+#define RAIL_MUX_FLAGS_RAIL_SET_PTI_DONE                                  0x0008
+#define RAIL_MUX_FLAGS_RAIL_CONFIG_TX_POWER_DONE                          0x0010
+
+// Protocol-specific flags
+#define RAIL_MUX_PROTOCOL_FLAGS_INIT_CB_PENDING                           0x0001
+#define RAIL_MUX_PROTOCOL_FLAGS_SETUP_TX_FIFO                             0x0002
+#define RAIL_MUX_PROTOCOL_FLAGS_START_TX_PENDING                          0x0004
+#define RAIL_MUX_PROTOCOL_FLAGS_TX_IN_PROGRESS                            0x0008
+#define RAIL_MUX_PROTOCOL_FLAGS_WAIT_FOR_ACK                              0x0010
+#define RAIL_MUX_PROTOCOL_FLAGS_SCHEDULED_TX_PENDING                      0x0020
+#define RAIL_MUX_PROTOCOL_FLAGS_TX_SCHEDULED                              0x0040
+#define RAIL_MUX_PROTOCOL_FLAGS_CONFIG_REPEATED_TX                        0x0080
+#define RAIL_MUX_PROTOCOL_FLAGS_CSMA_CONFIG_VALID                         0x0100
+#define RAIL_MUX_PROTOCOL_FLAGS_SCHEDULER_INFO_VALID                      0x0200
+#define RAIL_MUX_PROTOCOL_FLAGS_SCHEDULE_TX_CONFIG_VALID                  0x0400
+#define RAIL_MUX_PROTOCOL_FLAGS_RX_SCHEDULED                              0x0800
+#define RAIL_MUX_PROTOCOL_FLAGS_STACK_EVENT_RX_ACTIVE                     0x1000
+#define RAIL_MUX_PROTOCOL_FLAGS_STACK_EVENT_TX_ACTIVE                     0x2000
+#define RAIL_MUX_PROTOCOL_FLAGS_STACK_EVENT_RADIO_ACTIVE                  0x4000
+#define RAIL_MUX_PROTOCOL_FLAGS_LOCK_ACTIVE                               0x8000
+
+#define RAIL_MUX_PROTOCOL_ACTIVE_TX_FLAGS \
+  (RAIL_MUX_PROTOCOL_FLAGS_TX_IN_PROGRESS | RAIL_MUX_PROTOCOL_FLAGS_WAIT_FOR_ACK)
+
+// Other macros
+#ifdef INVALID_CHANNEL
+#undef INVALID_CHANNEL
+#endif
+#define INVALID_CHANNEL 0xFFFF
+
+#define INVALID_CONTEXT_INDEX 0xFF
+
+// normally 15.4 protocols have use max packet size of 128, but e.g.Zigbee CSL needs 512 bytes
+#define RAIL_MUX_MAX_BUFFER_SIZE 512 // 4 * 128 in ZB CSL
+
+// For 802.15.4 the filtering bits in the RAIL_AddrFilterMask_t are:
+//  7     6     5     4       3    2    1    0
+//  Addr3 Addr2 Addr1 AddrB | Pan3 Pan2 Pan1 PanB
+#define RAIL_MUX_FILTERING_MASK_BROADCAST_ENABLED  0x11
+
+#include "sl_rail_types.h"
+#include "sl_rail_ieee802154.h"
+#include "sl_rail_util_ieee802154_stack_event.h"
+
+#include "coexistence-802154.h"
+
+typedef enum {
+  SLI_RAIL_MUX_SCHEDULED_TX_REQUEST,
+  SLI_RAIL_MUX_SINGLE_TX_REQUEST,
+  SLI_RAIL_MUX_SINGLE_TX_CCA_CSMA_REQUEST,
+  SLI_RAIL_MUX_SCHEDULED_TX_CCA_CSMA_REQUEST,
+} sli_tx_type_t;
+
+typedef struct {
+  sli_tx_type_t tx_type;
+  uint16_t channel;
+  sl_rail_tx_options_t options;
+  sl_rail_csma_config_t csmaConfig;
+  sl_rail_scheduled_tx_config_t scheduler_config;
+  sl_rail_scheduler_info_t schedulerInfo;
+} sli_csma_tx_info_t;
+
+typedef struct {
+  uint16_t tx_init_length;
+  uint16_t tx_size;
+  uint8_t *data_ptr;
+} sli_fifo_tx_info_t;
+
+typedef void (*COEX_CounterHandler_t)(sl_rail_util_coex_event_t event);
+
+typedef struct {
+  sl_rail_config_t *rail_config;
+  sl_rail_init_complete_callback_t init_callback;
+  sl_rail_radio_config_changed_callback_t config_channels_callback;
+  sl_rail_events_t events;
+  volatile uint16_t flags;
+  uint16_t channel;
+  sl_rail_tx_power_t tx_power;
+  sl_rail_multi_timer_t timer;
+  sl_rail_timer_callback_t timer_callback;
+  COEX_CounterHandler_t coex_counter_handler;
+
+  // 802.15.4 specific fields
+  sl_rail_ieee802154_addr_config_t addr_802154;
+  bool is_pan_coordinator_802154;
+  uint8_t addr_filter_mask_802154;
+
+  // TODO: all protocol-specific information should be added here
+  sli_fifo_tx_info_t fifo_tx_info;
+  sli_csma_tx_info_t csma_tx_info;
+  sl_rail_tx_repeat_config_t tx_repeat_config;
+} sl_rail_mux_context_t;
+
+// System-wide initialization callback
+void sli_rail_mux_local_init(void);
+
+sl_rail_status_t sl_rail_mux_yield_radio(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_config_rx_options(sl_rail_handle_t railHandle,
+                                             sl_rail_rx_options_t mask,
+                                             sl_rail_rx_options_t options);
+
+sl_rail_status_t sl_rail_mux_set_state_timing (sl_rail_handle_t railHandle,
+                                             sl_rail_state_timing_t *timings);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_rx_to_enh_ack_tx(sl_rail_handle_t railHandle,
+                                                        sl_rail_transition_time_t *pRxToEnhAckTx);
+
+int8_t sl_rail_mux_get_rssi_offset(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_cancel_timer(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_set_timer(sl_rail_handle_t railHandle,
+                                      sl_rail_time_t time,
+                                      sl_rail_time_mode_t mode,
+                                      sl_rail_timer_callback_t cb);
+
+bool sl_rail_mux_is_rx_auto_ack_paused(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_get_rx_incoming_packet_info(sl_rail_handle_t railHandle,
+                                                     sl_rail_rx_packet_info_t *pPacketInfo);
+
+sl_rail_status_t sl_rail_mux_set_freq_offset(sl_rail_handle_t railHandle,
+                                           sl_rail_frequency_offset_t freqOffset);
+
+sl_rail_status_t sl_rail_mux_set_task_priority(sl_rail_handle_t railHandle,
+                                             uint8_t priority,
+                                             sl_rail_task_type_t taskType);
+
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_ant_div(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_1_mbps_fec(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_config_events(sl_rail_handle_t railHandle,
+                                          sl_rail_events_t mask,
+                                          sl_rail_events_t events);
+
+sl_rail_status_t sl_rail_mux_init(sl_rail_handle_t *p_rail_handle,
+                                  sl_rail_config_t *p_rail_config,
+                                  sl_rail_init_complete_callback_t init_complete_callback);
+
+/** Like @ref sl_rail_mux_init but binds to a fixed @a context_index (must be free). */
+sl_rail_status_t sl_rail_mux_init_at_context_index(sl_rail_handle_t *p_rail_handle,
+                                                 sl_rail_config_t *p_rail_config,
+                                                 sl_rail_init_complete_callback_t init_complete_callback,
+                                                 uint8_t context_index);
+
+/**
+ * @brief First logical context index mapped to RAIL fast channel-switching slot 0.
+ *
+ * Starts at @c 0. When the highest-index mux context is successfully initialized (e.g. optional
+ * third client at index @c SUPPORTED_PROTOCOL_COUNT - 1), the base becomes @c 1 so logical
+ * contexts @c 1 and @c 2 map to RAIL slots @c 0 and @c 1. Unregistering that client restores base
+ * @c 0 (see Zigbee @c sl_zigbee_rail_mux_aux_unregister_protocol). Override with a strong
+ * (non-weak) implementation if needed.
+ */
+uint8_t sl_rail_mux_get_ieee802154_rx_channel_switching_slot_base(void);
+
+sl_rail_status_t sl_rail_mux_set_pti_protocol(sl_rail_handle_t railHandle,
+                                            sl_rail_pti_protocol_t protocol);
+
+sl_rail_status_t sl_rail_mux_pause_rx_auto_ack(sl_rail_handle_t railHandle,
+                                            bool pause);
+
+sl_rail_status_t sl_rail_mux_idle(sl_rail_handle_t railHandle,
+                                  sl_rail_idle_mode_t mode,
+                                  bool wait);
+
+sl_rail_status_t sl_rail_mux_copy_rx_packet(sl_rail_handle_t railHandle,
+                                          uint8_t *pDest,
+                                          const sl_rail_rx_packet_info_t *pPacketInfo);
+
+sl_rail_status_t sl_rail_mux_config_channels(sl_rail_handle_t railHandle,
+                                            const sl_rail_channel_config_t *config,
+                                            sl_rail_radio_config_changed_callback_t cb);
+
+sl_rail_status_t sl_rail_mux_ieee802154_init(sl_rail_handle_t railHandle,
+                                             const sl_rail_ieee802154_config_t *config);
+
+sl_rail_status_t sl_rail_mux_convert_lqi(sl_rail_handle_t railHandle,
+                                        sl_rail_convert_lqi_callback_t cb);
+
+sl_rail_status_t sl_rail_mux_calibrate(sl_rail_handle_t railHandle,
+                                       sl_rail_cal_values_t *calValues,
+                                       sl_rail_cal_mask_t calForce);
+
+sl_rail_status_t sl_rail_mux_ieee802154_calibrate_ir_2p4_ghz(sl_rail_handle_t railHandle,
+                                                          uint32_t *imageRejection);
+
+uint16_t sl_rail_mux_get_radio_entropy(sl_rail_handle_t railHandle,
+                                     uint8_t *buffer,
+                                     uint16_t bytes);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_short_address(sl_rail_handle_t railHandle,
+                                                        uint16_t shortAddr,
+                                                        uint8_t index);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_long_address(sl_rail_handle_t railHandle,
+                                                       const uint8_t *longAddr,
+                                                       uint8_t index);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_pan_id(sl_rail_handle_t railHandle,
+                                                 uint16_t panId,
+                                                 uint8_t index);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_pan_coordinator(sl_rail_handle_t railHandle,
+                                                          bool isPanCoordinator);
+
+sl_rail_status_t sl_rail_mux_is_valid_channel(sl_rail_handle_t railHandle, uint16_t channel);
+
+int16_t sl_rail_mux_get_rssi(sl_rail_handle_t railHandle, sl_rail_time_t  waitTimeout);
+
+uint32_t sl_rail_mux_get_symbol_rate(sl_rail_handle_t railHandle);
+
+uint32_t sl_rail_mux_get_bit_rate(sl_rail_handle_t railHandle);
+
+sl_rail_cal_mask_t sl_rail_mux_get_pending_cal(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_calibrate_temp(sl_rail_handle_t railHandle);
+
+sl_rail_rx_packet_handle_t sl_rail_mux_get_rx_packet_info(sl_rail_handle_t railHandle,
+                                                       sl_rail_rx_packet_handle_t packetHandle,
+                                                       sl_rail_rx_packet_info_t *pPacketInfo);
+
+sl_rail_status_t sl_rail_mux_get_rx_packet_details_alt(sl_rail_handle_t railHandle,
+                                                   sl_rail_rx_packet_handle_t packetHandle,
+                                                   sl_rail_rx_packet_details_t *pPacketDetails);
+
+sl_rail_status_t sl_rail_mux_get_rx_time_sync_word_end(sl_rail_handle_t railHandle,
+                                                  uint16_t totalPacketBytes,
+                                                  sl_rail_time_t *pPacketTime);
+
+uint16_t sl_rail_mux_peek_rx_packet(sl_rail_handle_t railHandle,
+                                  sl_rail_rx_packet_handle_t packetHandle,
+                                  uint8_t *pDst,
+                                  uint16_t len,
+                                  uint16_t offset);
+
+sl_rail_status_t sl_rail_mux_ieee802154_get_address(sl_rail_handle_t railHandle,
+                                                   sl_rail_ieee802154_address_t *pAddress);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_frame_pending(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_get_scheduler_status(sl_rail_handle_t rail_handle,
+                                                sl_rail_scheduler_status_t *p_scheduler_status,
+                                                sl_rail_status_t *p_rail_status);
+
+sl_rail_status_t sli_rail_mux_GetTxPowerConfig(sl_rail_handle_t railHandle,
+                                               sl_rail_tx_power_config_t *config);
+
+sl_rail_tx_power_t sl_rail_mux_get_tx_power_dbm(sl_rail_handle_t railHandle);
+sl_rail_tx_power_t sli_rail_mux_GetTxPower(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_util_pa_post_init(sl_rail_handle_t railHandle,
+                                               sl_rail_tx_pa_mode_t pa_mode);
+sl_rail_tx_pa_mode_t sl_rail_mux_get_pa_mode(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_config_tx_power(sl_rail_handle_t railHandle,
+                                           const sl_rail_tx_power_config_t *config);
+
+sl_rail_status_t sl_rail_mux_set_tx_power_dbm(sl_rail_handle_t railHandle,
+                                           sl_rail_tx_power_t power);
+
+sl_rail_radio_state_t sl_rail_mux_get_radio_state(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_start_rx(sl_rail_handle_t railHandle,
+                                     uint16_t channel,
+                                     const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_set_tx_fifo(sl_rail_handle_t rail_handle,
+                                       sl_rail_fifo_buffer_align_t *p_addr,
+                                       uint16_t size_bytes,
+                                       uint16_t init_bytes,
+                                       uint16_t start_offset_bytes);
+
+sl_rail_status_t sl_rail_mux_start_cca_csma_tx(sl_rail_handle_t railHandle,
+                                            uint16_t channel,
+                                            sl_rail_tx_options_t options,
+                                            const sl_rail_csma_config_t *csmaConfig,
+                                            const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_start_tx(sl_rail_handle_t railHandle,
+                                     uint16_t channel,
+                                     sl_rail_tx_options_t options,
+                                     const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_start_scheduled_cca_csma_tx(sl_rail_handle_t railHandle,
+                                                     uint16_t channel,
+                                                     sl_rail_tx_options_t options,
+                                                     const sl_rail_scheduled_tx_config_t *scheduleTxConfig,
+                                                     const sl_rail_csma_config_t *csmaConfig,
+                                                     const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_stop_tx_stream(sl_rail_handle_t railHandle);
+
+uint8_t sl_rail_mux_ieee802154_convert_rssi_to_ed(int8_t rssiDbm);
+
+sl_rail_status_t sl_rail_mux_ieee802154_set_promiscuous_mode(sl_rail_handle_t railHandle,
+                                                           bool enable);
+
+sl_rail_status_t sl_rail_mux_set_cca_threshold(sl_rail_handle_t railHandle,
+                                             int8_t ccaThresholdDbm);
+
+sl_rail_status_t sl_rail_mux_set_rx_transitions(sl_rail_handle_t railHandle,
+                                              const sl_rail_state_transitions_t *transitions);
+sl_rail_status_t sl_rail_mux_config_cal(sl_rail_handle_t railHandle,
+                                       sl_rail_cal_mask_t calEnable);
+sl_rail_status_t sl_rail_mux_enable_pa_auto_mode(sl_rail_handle_t railHandle, bool enable);
+
+uint16_t sl_rail_mux_read_rx_fifo(sl_rail_handle_t railHandle,
+                                uint8_t *dataPtr,
+                                uint16_t readLength);
+
+uint16_t sl_rail_mux_get_rx_fifo_bytes_available(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_start_scheduled_tx(sl_rail_handle_t railHandle,
+                                              uint16_t channel,
+                                              sl_rail_tx_options_t options,
+                                              const sl_rail_scheduled_tx_config_t *config,
+                                              const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_config_sleep(sl_rail_handle_t rail_handle,
+                                         const sl_rail_timer_sync_config_t *p_timer_sync_config);
+
+sl_rail_status_t sl_rail_mux_start_average_rssi(sl_rail_handle_t railHandle,
+                                              uint16_t channel,
+                                              sl_rail_time_t averagingTimeUs,
+                                              const sl_rail_scheduler_info_t *schedulerInfo);
+
+uint16_t sl_rail_mux_write_tx_fifo(sl_rail_handle_t railHandle,
+                                 const uint8_t *dataPtr,
+                                 uint16_t writeLength,
+                                 bool reset);
+
+sl_rail_status_t sl_rail_mux_ieee802154_write_enh_ack(sl_rail_handle_t railHandle,
+                                                    const uint8_t *ackData,
+                                                    uint16_t ackDataLen);
+
+sl_rail_status_t sl_rail_mux_release_rx_packet(sl_rail_handle_t railHandle,
+                                             sl_rail_rx_packet_handle_t packetHandle);
+
+sl_rail_rx_packet_handle_t sl_rail_mux_hold_rx_packet(sl_rail_handle_t railHandle);
+
+int16_t sl_rail_mux_get_average_rssi(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_get_rx_time_sync_word_end_alt(sl_rail_handle_t railHandle,
+                                                     sl_rail_rx_packet_details_t *pPacketDetails);
+
+sl_rail_ieee802154_phy_t sl_rail_mux_ieee802154_get_pti_radio_config(sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_ieee802154_enable_early_frame_pending(sl_rail_handle_t railHandle,
+                                                                bool enable);
+
+uint16_t sl_rail_mux_set_tx_fifo_threshold(sl_rail_handle_t railHandle, uint16_t txThreshold);
+
+sl_rail_status_t sl_rail_mux_rail_schedule_rx(sl_rail_handle_t railHandle,
+                                             uint16_t channel,
+                                             const sl_rail_scheduled_rx_config_t *cfg,
+                                             const sl_rail_scheduler_info_t *schedulerInfo);
+
+sl_rail_status_t sl_rail_mux_set_next_tx_repeat(sl_rail_handle_t railHandle,
+                                             const sl_rail_tx_repeat_config_t *repeatConfig);
+
+void sl_rail_mux_update_active_radio_config(void);
+
+void sl_rail_mux_set_coex_counter_handler(sl_rail_handle_t railHandle,
+                                          COEX_CounterHandler_t counter_handler);
+
+sl_rail_util_ieee802154_stack_status_t sl_rail_mux_ieee802154_on_event(sl_rail_handle_t railHandle,
+                                                                       sl_rail_util_ieee802154_stack_event_t stack_event,
+                                                                       uint32_t supplement);
+sl_rail_status_t sl_rail_mux_ieee802154_enable_data_frame_pending(sl_rail_handle_t railHandle,
+                                                               bool enable);
+
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_2_mbps(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_rx_duty_cycling(sl_rail_handle_t railHandle);
+
+#ifdef HIGH_DATARATE_PHY
+void sl_rail_mux_set_high_datarate_phy_index(sl_rail_handle_t railHandle);
+#endif //HIGH_DATARATE_PHY
+
+sl_rail_status_t sl_rail_mux_config_multi_timer(sl_rail_handle_t rail_handle,
+                                              bool enable);
+
+sl_rail_status_t sl_rail_mux_set_multi_timer(sl_rail_handle_t rail_handle,
+                                           sl_rail_multi_timer_t *p_tmr,
+                                           sl_rail_time_t expiration_time,
+                                           sl_rail_time_mode_t expiration_mode,
+                                           sl_rail_multi_timer_callback_t expiration_callback,
+                                           void *cb_arg);
+
+sl_rail_status_t sl_rail_mux_cancel_multi_timer(sl_rail_handle_t rail_handle,
+                                              sl_rail_multi_timer_t *p_tmr);
+
+bool sl_rail_mux_is_multi_timer_running(sl_rail_handle_t rail_handle,
+                                     sl_rail_multi_timer_t *p_tmr);
+
+sl_rail_time_t sl_rail_mux_get_time(sl_rail_handle_t rail_handle);
+
+sl_rail_status_t sl_rail_mux_prepare_channel(sl_rail_handle_t rail_handle,
+                                            uint16_t channel);
+
+/**
+ * In a MUX configuration, where a single radio is used concurrently
+ * by two or more protocol stacks, this function allows the caller to
+ * lock the radio for exclusive use. This will prevent the other multiplexed
+ * protocol stacks from performing certain RAIL operations including but
+ * not limited to future transmits, scheduled tx, etc. Note that this does not
+ * prevent transmits and receives that were scheduled prior to the lock being acquired
+ *
+ * Due to its disruptive nature, the caller
+ * must attempt to return things to normal by unlocking the radio in a timely
+ * fashion. Lock may be used to perform composite radio operations without
+ * interruptions from other protocol stacks.
+ *
+ * NOTE: Part of this function runs with interrupts disabled
+ *
+ * @param[in] railHandle  Rail handle of protocol stack requesting the lock
+ *
+ * @retval SL_STATUS_FAIL  Radio lock unsuccessful.
+ * @retval SL_STATUS_OK   Radio lock successful.
+ *
+ */
+sl_status_t sli_rail_mux_lock_radio (sl_rail_handle_t railHandle);
+
+/**
+ * In a MUX configuration, where a single radio is used concurrently
+ * by two or more protocol stacks, this function allows the caller to
+ * resume multiplexed radio operation from a locked state. The caller of
+ * the lock function must be the one to unlock the radio from a locked state.
+ * Unlock operations that are performed when there is no existing lock on the
+ * radio shall always be allowed.
+ *
+ * NOTE: Part of this function runs with interrupts disabled
+ *
+ * @param[in] railHandle  Rail handle of protocol stack requesting the lock
+ *
+ * @retval SL_STATUS_FAIL  Radio unlock unsuccessful.
+ * @retval SL_STATUS_OK   Radio unlock successful.
+ *
+ */
+sl_status_t sli_rail_mux_unlock_radio (sl_rail_handle_t railHandle);
+
+sl_rail_status_t sl_rail_mux_get_channel(sl_rail_handle_t railHandle, uint16_t *channel);
+uint16_t sl_rail_mux_get_tx_packets_remaining(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_reset_fifo(sl_rail_handle_t railHandle, bool txFifo, bool rxFifo);
+sl_rail_status_t sl_rail_mux_config_rx_duty_cycle(sl_rail_handle_t railHandle,
+                                               const sl_rail_rx_duty_cycle_config_t *config);
+sl_rail_status_t sl_rail_mux_enable_rx_duty_cycle(sl_rail_handle_t railHandle,
+                                               bool enable);
+uint16_t sl_rail_mux_get_tx_fifo_space_available(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_accept_frames(sl_rail_handle_t railHandle,
+                                                     uint8_t framesMask);
+sl_rail_status_t sl_rail_mux_util_ieee802154_config_radio(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2_mbps_rx_channel(sl_rail_handle_t railHandle,
+                                                                 uint16_t channel);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_ant_div_coex(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_ant_div_coex_fem(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_ant_div_fem(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_coex(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_coex_fem(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_2p4_ghz_radio_fem(sl_rail_handle_t railHandle);
+sl_rail_status_t sl_rail_mux_ieee802154_config_cca_mode(sl_rail_handle_t railHandle,
+                                                      sl_rail_ieee802154_cca_mode_t ccaMode);
+sl_rail_status_t sl_rail_mux_ieee802154_config_e_options(sl_rail_handle_t railHandle,
+                                                       sl_rail_ieee802154_e_options_t mask,
+                                                       sl_rail_ieee802154_e_options_t options);
+sl_rail_status_t sl_rail_mux_ieee802154_config_g_options(sl_rail_handle_t railHandle,
+                                                       sl_rail_ieee802154_g_options_t mask,
+                                                       sl_rail_ieee802154_g_options_t options);
+sl_rail_status_t sl_rail_mux_ieee802154_set_pti_radio_config(sl_rail_handle_t railHandle,
+                                                          sl_rail_ieee802154_phy_t ptiRadioConfigId);
+sl_rail_status_t sl_rail_mux_set_rssi_offset(sl_rail_handle_t railHandle, int8_t rssiOffset);
+sl_rail_status_t sl_rail_mux_start_tx_stream_alt(sl_rail_handle_t railHandle,
+                                              uint16_t channel,
+                                              sl_rail_stream_mode_t mode,
+                                              sl_rail_tx_options_t options);
+sl_rail_status_t sl_rail_mux_get_rx_time_frame_end(sl_rail_handle_t railHandle,
+                                               sl_rail_rx_packet_details_t *pPacketdetails);
+bool sl_rail_mux_is_next_cca_now(sl_rail_handle_t railHandle);
+//------------------------------------------------------------------------------
+// Internals
+
+#if !defined(HIDDEN)
+#ifdef SL_ZIGBEE_SCRIPTED_TEST
+#define HIDDEN
+#else
+#define HIDDEN static
+#endif
+#endif
+
+#ifdef SL_ZIGBEE_TEST
+#define RAIL_MUX_DECLARE_IRQ_STATE
+#define RAIL_MUX_ENTER_CRITICAL()
+#define RAIL_MUX_EXIT_CRITICAL()
+#else // !SL_ZIGBEE_TEST
+#include "sl_core.h"
+#define RAIL_MUX_DECLARE_IRQ_STATE CORE_DECLARE_IRQ_STATE
+#define RAIL_MUX_ENTER_CRITICAL() CORE_ENTER_CRITICAL()
+#define RAIL_MUX_EXIT_CRITICAL() CORE_EXIT_CRITICAL()
+#endif // SL_ZIGBEE_TEST
+
+#endif //RAIL_MUX_H

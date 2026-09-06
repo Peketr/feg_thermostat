@@ -18,8 +18,6 @@
 #include "zigbee_helpers.h"
 #include "gui.h"
 
-bool steering = false;
-
 // RHT Sensor
 #include "sl_i2cspm_instances.h"
 #include "sl_si70xx.h"
@@ -203,7 +201,7 @@ void thermostat_tick(){
   draw_display(&glib_context, target_temp, current_temp, open_valves,enable_heating);
 
 
-  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 5000);
+  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 30000);
 }
 
 void handle_button_press(){
@@ -226,7 +224,7 @@ void app_init(){
   oled_init(&glib_context);
   retrigger = false;
   
-  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 10000);
+  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 2000);
 
 }
 
@@ -249,31 +247,24 @@ void app_process_action(void)
 
       switch (button_pressed_id[i]){
         case BTNP:
-          sl_zigbee_app_debug_println("Handling Plus button");
           if(status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
             set_target_temp(target_temp + 50);
           break;
         case BTNM:
-          sl_zigbee_app_debug_println("Handling Minus button");
           if(status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
             status = set_target_temp(target_temp - 50);
-          sl_zigbee_app_debug_println("Handling Minus button result: 0x%x",status);
           break;
         case BTNA:
-          sl_zigbee_app_debug_println("Handling A button");
           if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
             set_system_mode(!heating_enabled);
           break;
         case BTNC:
-          if (sl_zigbee_stack_is_up() && sl_zigbee_network_state() == SL_ZIGBEE_JOINED_NETWORK) {
-            if (button_pressed_very_long[i]){
-              sl_zigbee_app_debug_println("Leaving Network due to long press");
-              sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
-            }
+          if (on_network() && button_pressed_very_long[i]) {
+            sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
+            retrigger = true;
           } else {
-            sl_zigbee_app_debug_println("Starting Commissioning due to button press");
             sl_zigbee_af_network_steering_start();
-            steering = true;
+            retrigger = true;
           }
           break;
       }
@@ -286,4 +277,117 @@ void app_process_action(void)
     sl_zigbee_af_event_set_active(&thermostat_tick_event);
   }
   
+}
+
+void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
+                                                sl_zigbee_af_cluster_id_t clusterId,
+                                                sl_zigbee_af_attribute_id_t attributeId,
+                                                int8u mask,
+                                                int16u manufacturerCode,
+                                                int8u type,
+                                                int8u size,
+                                                int8u* value)
+{
+  UNUSED_VAR(mask);
+  UNUSED_VAR(manufacturerCode);
+  UNUSED_VAR(type);
+  UNUSED_VAR(size);
+  UNUSED_VAR(value);
+
+  if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_CLUSTER_ID && (attributeId== ZCL_SYSTEM_MODE_ATTRIBUTE_ID || attributeId == ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID)){
+    retrigger = true;
+  }
+}
+
+/** @brief Complete network steering.
+ *
+ * This callback is fired when the Network Steering plugin is complete.
+ *
+ * @param status On success this will be set to SL_STATUS_OK to indicate a
+ * network was joined successfully. On failure this will be the status code of
+ * the last join or scan attempt. Ver.: always
+ *
+ * @param totalBeacons The total number of 802.15.4 beacons that were heard,
+ * including beacons from different devices with the same PAN ID. Ver.: always
+ * @param joinAttempts The number of join attempts that were made to get onto
+ * an open Zigbee network. Ver.: always
+ *
+ * @param finalState The finishing state of the network steering process. From
+ * this, one is able to tell on which channel mask and with which key the
+ * process was complete. Ver.: always
+ */
+void sl_zigbee_af_network_steering_complete_cb(sl_status_t status,
+                                               uint8_t totalBeacons,
+                                               uint8_t joinAttempts,
+                                               uint8_t finalState)
+{
+  UNUSED_VAR(totalBeacons);
+  UNUSED_VAR(joinAttempts);
+  UNUSED_VAR(finalState);
+  sl_zigbee_app_debug_println("%s network %s: 0x%02X", "Join", "complete", status);
+  retrigger = true;
+}
+
+/** @brief
+ *
+ * Application framework equivalent of ::sl_zigbee_radio_needs_calibrating_handler
+ */
+void sl_zigbee_af_radio_needs_calibrating_cb(void)
+{
+  sl_mac_calibrate_current_channel();
+}
+
+void sli_zigbee_af_stack_status_callback(sl_status_t status){
+  retrigger = true;
+  switch (status) {
+    case SL_STATUS_NETWORK_UP:
+    case SL_STATUS_ZIGBEE_TRUST_CENTER_SWAP_EUI_HAS_CHANGED:      // also means NETWORK_UP
+    case SL_STATUS_ZIGBEE_TRUST_CENTER_SWAP_EUI_HAS_NOT_CHANGED:  // also means NETWORK_UP
+    {
+      sl_zigbee_af_app_println("SL_STATUS_NETWORK_UP 0x%04X", sl_zigbee_af_get_node_id());
+      sl_zigbee_af_app_flush();
+
+      if (status == SL_STATUS_NETWORK_UP) {
+        sl_zigbee_start_writing_stack_tokens();
+      } else {
+        sl_zigbee_af_app_println("Trust Center EUI has %schanged.",
+                                 (status == SL_STATUS_ZIGBEE_TRUST_CENTER_SWAP_EUI_HAS_CHANGED) ? "" : "not ");
+        sl_zigbee_af_registration_abort_cb();
+        sl_zigbee_af_registration_start_cb();
+      }
+      sl_zigbee_af_registration_start_cb();
+      break;
+    }
+
+    case SL_STATUS_ZIGBEE_RECEIVED_KEY_IN_THE_CLEAR:
+    case SL_STATUS_ZIGBEE_NO_NETWORK_KEY_RECEIVED:
+    case SL_STATUS_ZIGBEE_NO_LINK_KEY_RECEIVED:
+    case SL_STATUS_ZIGBEE_PRECONFIGURED_KEY_REQUIRED:
+    case SL_STATUS_ZIGBEE_MOVE_FAILED:
+    case SL_STATUS_NOT_JOINED:
+    case SL_STATUS_NO_BEACONS:
+    case SL_STATUS_NETWORK_DOWN:
+      if (status == SL_STATUS_NETWORK_DOWN) {
+        sl_zigbee_af_app_println("SL_STATUS_NETWORK_DOWN");
+      } else {
+        sl_zigbee_af_app_println("SL_STATUS_NOT_JOINED");
+      }
+      sl_zigbee_af_app_flush();
+      sl_zigbee_af_stack_down();
+      break;
+    case SL_STATUS_ZIGBEE_NETWORK_OPENED:
+      sl_zigbee_af_app_println("SL_STATUS_ZIGBEE_NETWORK_OPENED: %d sec", sl_zigbee_af_get_open_network_duration_sec());
+      return;
+
+    case SL_STATUS_ZIGBEE_NETWORK_CLOSED:
+      sl_zigbee_af_app_println("SL_STATUS_ZIGBEE_NETWORK_CLOSED");
+      return;
+
+    case SL_STATUS_ZIGBEE_REJOIN_FAILED_BUT_NETWORK_RESTORED:
+      sl_zigbee_af_app_println("SL_STATUS_ZIGBEE_REJOIN_FAILED_BUT_NETWORK_RESTORED");
+      return;
+
+    default:
+      sl_zigbee_af_debug_println("EVENT: stackStatus 0x%08X", status);
+  }
 }

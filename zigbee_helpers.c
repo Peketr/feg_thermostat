@@ -1,8 +1,6 @@
 
 #include "zigbee_helpers.h"
 
-#define THERMOSTAT_ENDPOINT 1
-
 extern bool retrigger;
 extern bool steering;
 
@@ -107,62 +105,4 @@ sl_zigbee_af_status_t update_running_state(uint8_t open_valves){
 
 bool on_network(){
    return sl_zigbee_stack_is_up() && sl_zigbee_network_state() == SL_ZIGBEE_JOINED_NETWORK;
-}
-
-void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
-                                                sl_zigbee_af_cluster_id_t clusterId,
-                                                sl_zigbee_af_attribute_id_t attributeId,
-                                                int8u mask,
-                                                int16u manufacturerCode,
-                                                int8u type,
-                                                int8u size,
-                                                int8u* value)
-{
-  UNUSED_VAR(mask);
-  UNUSED_VAR(manufacturerCode);
-  UNUSED_VAR(type);
-  UNUSED_VAR(size);
-  UNUSED_VAR(value);
-
-  if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_CLUSTER_ID && (attributeId== ZCL_SYSTEM_MODE_ATTRIBUTE_ID || attributeId == ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID)){
-    retrigger = true;
-  }
-}
-
-/** @brief Complete network steering.
- *
- * This callback is fired when the Network Steering plugin is complete.
- *
- * @param status On success this will be set to SL_STATUS_OK to indicate a
- * network was joined successfully. On failure this will be the status code of
- * the last join or scan attempt. Ver.: always
- *
- * @param totalBeacons The total number of 802.15.4 beacons that were heard,
- * including beacons from different devices with the same PAN ID. Ver.: always
- * @param joinAttempts The number of join attempts that were made to get onto
- * an open Zigbee network. Ver.: always
- *
- * @param finalState The finishing state of the network steering process. From
- * this, one is able to tell on which channel mask and with which key the
- * process was complete. Ver.: always
- */
-void sl_zigbee_af_network_steering_complete_cb(sl_status_t status,
-                                               uint8_t totalBeacons,
-                                               uint8_t joinAttempts,
-                                               uint8_t finalState)
-{
-  UNUSED_VAR(totalBeacons);
-  UNUSED_VAR(joinAttempts);
-  UNUSED_VAR(finalState);
-  sl_zigbee_app_debug_println("%s network %s: 0x%02X", "Join", "complete", status);
-  steering = false;
-}
-
-/** @brief
- *
- * Application framework equivalent of ::sl_zigbee_radio_needs_calibrating_handler
- */
-void sl_zigbee_af_radio_needs_calibrating_cb(void)
-{
-  sl_mac_calibrate_current_channel();
 }

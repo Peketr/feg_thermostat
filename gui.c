@@ -6,8 +6,6 @@
 #include "zigbee_helpers.h"
 #include "start_image.h"
 
-extern bool steering;
-
 void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled){
   glib_clear(glib_context);
   if(heating_enabled){
@@ -32,7 +30,7 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
     glib_draw_string(glib_context, "Full", 0, 0);
   }
 
-  if (steering) {
+  if (steering_in_progress()) {
     glib_draw_string(glib_context, "Connecting", 65, 0);
   } else if (on_network()){
     glib_draw_string(glib_context, "Connected", 65, 0);

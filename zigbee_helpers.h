@@ -10,7 +10,9 @@
 #include "zap-type.h"
 #include "zigbee_app_framework_event.h"
 #include "zigbee_common_callback_dispatcher.h"
+#include "network-steering.h"
 
+#define THERMOSTAT_ENDPOINT 1
 
 sl_zigbee_af_status_t get_target(int16_t *target_temp,uint8_t *system_mode);
 void update_measurement(uint32_t rh_data, int32_t temp_data);

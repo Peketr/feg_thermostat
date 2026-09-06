@@ -36,7 +36,7 @@
 static uint8_t cols[ 2 ]    = { OLEDC_COL_OFF, OLEDC_COL_OFF + OLEDC_SCREEN_WIDTH - 1 };          
 static uint8_t rows[ 2 ]    = { OLEDC_ROW_OFF, OLEDC_ROW_OFF + OLEDC_SCREEN_HEIGHT - 1 };
 
-static uint8_t OLEDC_DEFAULT_REMAP = 0x74;
+static uint8_t OLEDC_DEFAULT_REMAP = 0x70;
 //OLEDC_RMP_INC_HOR | OLEDC_RMP_COLOR_REV |
 //                                OLEDC_RMP_SEQ_RGB | OLEDC_RMP_SCAN_REV |
 //                                OLEDC_RMP_SPLIT_ENABLE | OLEDC_COLOR_65K;

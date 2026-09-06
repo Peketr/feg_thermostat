@@ -55,7 +55,7 @@
 
 // <o MIKROE_SSD1351_SPI_BITRATE> Bit Rate (Bits/Second) <1-116000000>
 // <i> Default: 10000000
-#define MIKROE_SSD1351_SPI_BITRATE             16000000
+#define MIKROE_SSD1351_SPI_BITRATE             19000000
 
 // </e>
 // </h>

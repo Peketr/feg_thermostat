@@ -7,3 +7,4 @@ CMakePresets.json
 .vscode/
 artifacts/
 trashed_modified_files/
+config/zcl/slc_args.json

@@ -14,6 +14,7 @@ include(zigbee_minimal_thermostat.cmake)
 
 add_executable(zigbee_minimal_thermostat
     # Add additional sources here
+    "../zigbee_helpers.c"
 )
 
 target_include_directories(zigbee_minimal_thermostat PUBLIC
@@ -50,8 +51,8 @@ set_target_properties(zigbee_minimal_thermostat PROPERTIES LINKER_LANGUAGE C)
 add_custom_command(TARGET zigbee_minimal_thermostat
     POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} ${OBJCOPY_SREC_CMD} "$<TARGET_FILE:zigbee_minimal_thermostat>" "$<TARGET_FILE_DIR:zigbee_minimal_thermostat>/$<TARGET_FILE_BASE_NAME:zigbee_minimal_thermostat>.s37"
-    COMMAND ${CMAKE_OBJCOPY} ${OBJCOPY_IHEX_CMD} "$<TARGET_FILE:zigbee_minimal_thermostat>" "$<TARGET_FILE_DIR:zigbee_minimal_thermostat>/$<TARGET_FILE_BASE_NAME:zigbee_minimal_thermostat>.hex"
-    COMMAND ${CMAKE_OBJCOPY} ${OBJCOPY_BIN_CMD}  "$<TARGET_FILE:zigbee_minimal_thermostat>" "$<TARGET_FILE_DIR:zigbee_minimal_thermostat>/$<TARGET_FILE_BASE_NAME:zigbee_minimal_thermostat>.bin" 
+    #COMMAND ${CMAKE_OBJCOPY} ${OBJCOPY_IHEX_CMD} "$<TARGET_FILE:zigbee_minimal_thermostat>" "$<TARGET_FILE_DIR:zigbee_minimal_thermostat>/$<TARGET_FILE_BASE_NAME:zigbee_minimal_thermostat>.hex"
+    #COMMAND ${CMAKE_OBJCOPY} ${OBJCOPY_BIN_CMD}  "$<TARGET_FILE:zigbee_minimal_thermostat>" "$<TARGET_FILE_DIR:zigbee_minimal_thermostat>/$<TARGET_FILE_BASE_NAME:zigbee_minimal_thermostat>.bin" 
 )
 
 # Run post-build pipeline to perform additional post-processing

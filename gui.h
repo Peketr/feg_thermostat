@@ -7,6 +7,8 @@
 
 void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled);
 
+void display_logo();
+
 sl_status_t oled_init(glib_context_t* glib_context);
 
 #endif

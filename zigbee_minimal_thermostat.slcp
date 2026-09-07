@@ -107,6 +107,9 @@ component:
   id: zigbee_debug_print
 - package: simplicity_sdk
   vendor: silabs
+  id: zigbee_find_and_bind_initiator
+- package: simplicity_sdk
+  vendor: silabs
   id: zigbee_network_steering
 - package: simplicity_sdk
   vendor: silabs
@@ -129,6 +132,9 @@ component:
 - package: simplicity_sdk
   vendor: silabs
   id: zigbee_zcl_framework_core
+- package: simplicity_sdk
+  vendor: silabs
+  id: zigbee_zll_identify_server
 - package: third_party_hw_drivers
   id: oledc_ssd1351
 - package: third_party_hw_drivers
@@ -681,6 +687,9 @@ autoselected_components:
 - package: simplicity_sdk
   vendor: silabs
   id: zigbee_enhanced_routing
+- package: simplicity_sdk
+  vendor: silabs
+  id: zigbee_identify
 - package: simplicity_sdk
   vendor: silabs
   id: zigbee_phy_2_4

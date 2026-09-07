@@ -41,6 +41,10 @@ sl_status_t oled_init(glib_context_t* glib_context){
   return sc;
 }
 
+void display_logo(){
+  mikroe_ssd1351_image(ppcat128x128, 0, 0);
+}
+
 void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled){
   glib_clear(glib_context);
   if(heating_enabled){

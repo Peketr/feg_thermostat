@@ -273,10 +273,10 @@ void app_process_action(void)
         case BTNC:
           if (!on_network()) {
             sl_zigbee_af_network_steering_start();
-            retrigger = true;
           }
           break;
       }
+      retrigger = true;
       button_pressed_id[i] = BTN_NONE;  
     }
     i = (i + 1) % 16;
@@ -407,4 +407,11 @@ void sli_zigbee_af_stack_status_callback(sl_status_t status){
     default:
       sl_zigbee_af_debug_println("EVENT: stackStatus 0x%08X", status);
   }
+}
+
+void sl_zigbee_af_identify_start_feedback_cb(uint8_t endpoint, uint16_t identifyTime){
+  UNUSED_VAR(endpoint);
+  UNUSED_VAR(identifyTime);
+  
+  display_logo();
 }

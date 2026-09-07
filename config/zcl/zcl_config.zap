@@ -19,7 +19,7 @@
   "package": [
     {
       "pathRelativity": "relativeToZap",
-      "path": "..\\..\\..\\..\\..\\.silabs\\slt\\installs\\conan\\p\\simpl508ee6c1a6569\\p\\zigbee\\app\\zcl\\zcl-zap.json",
+      "path": "../../../../../.silabs/slt/installs/conan/p/simpl508ee6c1a6569/p/zigbee/app/zcl/zcl-zap.json",
       "type": "zcl-properties",
       "category": "zigbee",
       "version": 1,
@@ -27,7 +27,7 @@
     },
     {
       "pathRelativity": "relativeToZap",
-      "path": "..\\..\\..\\..\\..\\.silabs\\slt\\installs\\conan\\p\\simpl508ee6c1a6569\\p\\zigbee\\app\\framework\\gen-template\\gen-templates.json",
+      "path": "../../../../../.silabs/slt/installs/conan/p/simpl508ee6c1a6569/p/zigbee/app/framework/gen-template/gen-templates.json",
       "type": "gen-templates-json",
       "category": "zigbee",
       "version": "zigbee-v0"
@@ -38,18 +38,18 @@
       "id": 1,
       "name": "Anonymous Endpoint Type",
       "deviceTypeRef": {
-        "code": 65535,
-        "profileId": 65535,
-        "label": "Custom ZCL Device Type",
-        "name": "Custom ZCL Device Type",
+        "code": 769,
+        "profileId": 260,
+        "label": "HA-tstat",
+        "name": "HA-tstat",
         "deviceTypeOrder": 0
       },
       "deviceTypes": [
         {
-          "code": 65535,
-          "profileId": 65535,
-          "label": "Custom ZCL Device Type",
-          "name": "Custom ZCL Device Type",
+          "code": 769,
+          "profileId": 260,
+          "label": "HA-tstat",
+          "name": "HA-tstat",
           "deviceTypeOrder": 0
         }
       ],
@@ -57,11 +57,11 @@
         1
       ],
       "deviceIdentifiers": [
-        65535
+        769
       ],
-      "deviceTypeName": "Custom ZCL Device Type",
-      "deviceTypeCode": 65535,
-      "deviceTypeProfileId": 65535,
+      "deviceTypeName": "HA-tstat",
+      "deviceTypeCode": 769,
+      "deviceTypeProfileId": 260,
       "clusters": [
         {
           "name": "Basic",
@@ -146,6 +146,126 @@
               "singleton": 1,
               "bounded": 0,
               "defaultValue": "3",
+              "reportable": 0,
+              "minInterval": 1,
+              "maxInterval": 65534,
+              "reportableChange": 0
+            }
+          ]
+        },
+        {
+          "name": "Identify",
+          "code": 3,
+          "mfgCode": null,
+          "define": "IDENTIFY_CLUSTER",
+          "side": "client",
+          "enabled": 1,
+          "commands": [
+            {
+              "name": "IdentifyQueryResponse",
+              "code": 0,
+              "mfgCode": null,
+              "source": "server",
+              "isIncoming": 1,
+              "isEnabled": 1
+            },
+            {
+              "name": "Identify",
+              "code": 0,
+              "mfgCode": null,
+              "source": "client",
+              "isIncoming": 0,
+              "isEnabled": 1
+            },
+            {
+              "name": "IdentifyQuery",
+              "code": 1,
+              "mfgCode": null,
+              "source": "client",
+              "isIncoming": 0,
+              "isEnabled": 1
+            }
+          ],
+          "attributes": [
+            {
+              "name": "cluster revision",
+              "code": 65533,
+              "mfgCode": null,
+              "side": "client",
+              "type": "int16u",
+              "included": 1,
+              "storageOption": "RAM",
+              "singleton": 0,
+              "bounded": 0,
+              "defaultValue": "2",
+              "reportable": 0,
+              "minInterval": 1,
+              "maxInterval": 65534,
+              "reportableChange": 0
+            }
+          ]
+        },
+        {
+          "name": "Identify",
+          "code": 3,
+          "mfgCode": null,
+          "define": "IDENTIFY_CLUSTER",
+          "side": "server",
+          "enabled": 1,
+          "commands": [
+            {
+              "name": "Identify",
+              "code": 0,
+              "mfgCode": null,
+              "source": "client",
+              "isIncoming": 1,
+              "isEnabled": 1
+            },
+            {
+              "name": "IdentifyQueryResponse",
+              "code": 0,
+              "mfgCode": null,
+              "source": "server",
+              "isIncoming": 0,
+              "isEnabled": 1
+            },
+            {
+              "name": "IdentifyQuery",
+              "code": 1,
+              "mfgCode": null,
+              "source": "client",
+              "isIncoming": 1,
+              "isEnabled": 1
+            }
+          ],
+          "attributes": [
+            {
+              "name": "identify time",
+              "code": 0,
+              "mfgCode": null,
+              "side": "server",
+              "type": "int16u",
+              "included": 1,
+              "storageOption": "RAM",
+              "singleton": 0,
+              "bounded": 0,
+              "defaultValue": "0x0000",
+              "reportable": 0,
+              "minInterval": 1,
+              "maxInterval": 65534,
+              "reportableChange": 0
+            },
+            {
+              "name": "cluster revision",
+              "code": 65533,
+              "mfgCode": null,
+              "side": "server",
+              "type": "int16u",
+              "included": 1,
+              "storageOption": "RAM",
+              "singleton": 0,
+              "bounded": 0,
+              "defaultValue": "2",
               "reportable": 0,
               "minInterval": 1,
               "maxInterval": 65534,

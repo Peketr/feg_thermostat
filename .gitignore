@@ -8,3 +8,5 @@ CMakePresets.json
 artifacts/
 trashed_modified_files/
 config/zcl/slc_args.json
+config/zcl/zcl_config.zap~
+cmake_gcc/.DS_Store

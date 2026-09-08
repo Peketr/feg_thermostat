@@ -42,14 +42,48 @@
 #define BTNP 5
 #define BTNM 6
 
-uint8_t button_pressed_id[16] = {BTN_NONE};
-bool button_pressed_long[16] = {false};
-bool button_pressed_very_long[16] = {false};
+// ISR-safe single-producer (ISR) / single-consumer (main loop) button event queue.
+typedef struct {
+  uint8_t id;
+  bool long_press;
+  bool very_long_press;
+} button_event_t;
+
+#define BUTTON_QUEUE_SIZE 16
+static volatile button_event_t button_queue[BUTTON_QUEUE_SIZE];
+static volatile uint8_t button_queue_head = 0; // written only by the ISR
+static volatile uint8_t button_queue_tail = 0; // written only by app_process_action
+
+// Called from the button ISR. Drops the event if the queue is full.
+static void button_queue_push(uint8_t id, bool long_press, bool very_long_press){
+  uint8_t next = (button_queue_head + 1) % BUTTON_QUEUE_SIZE;
+  if (next == button_queue_tail) {
+    return;
+  }
+  button_queue[button_queue_head].id = id;
+  button_queue[button_queue_head].long_press = long_press;
+  button_queue[button_queue_head].very_long_press = very_long_press;
+  button_queue_head = next;
+}
+
+// Called from app_process_action. Returns false when the queue is empty.
+static bool button_queue_pop(button_event_t *event){
+  if (button_queue_tail == button_queue_head) {
+    return false;
+  }
+  *event = button_queue[button_queue_tail];
+  button_queue_tail = (button_queue_tail + 1) % BUTTON_QUEUE_SIZE;
+  return true;
+}
 
 sl_zigbee_af_event_t thermostat_tick_event;
 void thermostat_tick();
 
+sl_zigbee_af_event_t decommission_watch_event;
+void decommission_watch_tick();
+
 bool retrigger = false;
+// Set/cleared from the button ISR; only read (never armed from the ISR) elsewhere.
 bool decommission_started = false;
 uint32_t decommission_start_time = 0;
 
@@ -72,59 +106,45 @@ uint8_t fetch_btn_id(const sl_button_t* handle){
   return BTN_NONE;
 }
 
+static const char* button_name(const sl_button_t *handle){
+  if (handle == &sl_button_btna) return "A";
+  if (handle == &sl_button_btnb) return "B";
+  if (handle == &sl_button_btnc) return "C";
+  if (handle == &sl_button_btnd) return "D";
+  if (handle == &sl_button_btnplus) return "Plus";
+  if (handle == &sl_button_btnminus) return "Minus";
+  return "?";
+}
+
+// Runs in ISR context: only queue/flag manipulation here, never call
+// sl_zigbee_af_event_* functions from this callback.
 void sl_button_on_change(const sl_button_t *handle){
 
-  static bool pressed = false;
-  static uint8_t btn = 0;
+  static bool press_started = false;
+  static uint8_t btn = BTN_NONE;
   static uint32_t pressbegin = 0;
 
-  if (!pressed){ // if button press didn't start yet
-    if (handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED){
-      pressed = true;
-      btn = fetch_btn_id(handle);
-      pressbegin = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
-    }
-  } else { // if already pressed
-    if (handle->get_state(handle) == SL_SIMPLE_BUTTON_RELEASED && fetch_btn_id(handle) == btn){
-      static uint8_t index = 0;
-      sl_zigbee_app_debug_println("registering button press %d",index);
-      button_pressed_id[index] = btn;
-      button_pressed_long[index] = (sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) - pressbegin) > 1000;
-      button_pressed_very_long[index] = (sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) - pressbegin) > 10000;
+  bool is_pressed = handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED;
 
-      index = (index + 1) % 16;
-      btn = BTN_NONE;
-      pressed = false;
-      
-    }
+  if (!press_started && is_pressed){ 
+    press_started = true;
+    btn = fetch_btn_id(handle);
+    pressbegin = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
+  } else if (press_started && !is_pressed && fetch_btn_id(handle) == btn){
+    uint32_t held_ms = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) - pressbegin;
+    button_queue_push(btn, held_ms > 1000, held_ms > 10000);
+    btn = BTN_NONE;
+    press_started = false;
   }
 
   if (handle == &sl_button_btnc){
-    if (on_network() && handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED){
-      decommission_started = true;
+    decommission_started = is_pressed && on_network();
+    if (decommission_started) {
       decommission_start_time = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
-    } else {
-      decommission_started = false;
     }
   }
-  if (handle == &sl_button_btna){
-    sl_zigbee_app_debug_print("Button A ");
-  } else if (handle == &sl_button_btnb){
-    sl_zigbee_app_debug_print("Button B ");
-  } else if (handle == &sl_button_btnc){
-    sl_zigbee_app_debug_print("Button C ");
-  } else if (handle == &sl_button_btnd){
-    sl_zigbee_app_debug_print("Button D ");
-  } else if (handle == &sl_button_btnplus){
-    sl_zigbee_app_debug_print("Button Plus ");
-  } else if (handle == &sl_button_btnminus){
-    sl_zigbee_app_debug_print("Button Minus ");
-  } 
-  if (handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED){
-    sl_zigbee_app_debug_println("Pressed");
-  } else {
-    sl_zigbee_app_debug_println("Released");
-  }
+
+  sl_zigbee_app_debug_println("Button %s %s", button_name(handle), is_pressed ? "Pressed" : "Released");
 }
 
 
@@ -174,6 +194,13 @@ uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
 // #######################################################################
 // MAIN OPERATION ########################################################
 // #######################################################################
+
+// Cached so the decommission-hold watchdog can redraw without recomputing state.
+static int16_t last_target_temp = 0;
+static int16_t last_current_temp = 0;
+static uint8_t last_open_valves = 0;
+static bool last_heating_enabled = false;
+
 void thermostat_tick(){
   sl_status_t sc;
   uint32_t rh_data;
@@ -205,6 +232,11 @@ void thermostat_tick(){
   // Update relay state to gateway
   update_running_state(open_valves);
 
+  last_target_temp = target_temp;
+  last_current_temp = current_temp;
+  last_open_valves = open_valves;
+  last_heating_enabled = enable_heating;
+
   //Update Display
   draw_display(&glib_context, target_temp, current_temp, open_valves,enable_heating);
 
@@ -212,8 +244,13 @@ void thermostat_tick(){
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 30000);
 }
 
-void handle_button_press(){
-  
+// Reschedules itself at a fixed rate only while BTNC is held, so the
+// "hold to decommission" warning stays live without redrawing on every tick.
+void decommission_watch_tick(){
+  if (decommission_started) {
+    draw_display(&glib_context, last_target_temp, last_current_temp, last_open_valves, last_heating_enabled);
+    sl_zigbee_af_event_set_delay_ms(&decommission_watch_event, 250);
+  }
 }
 
 
@@ -228,6 +265,7 @@ void app_init(){
 
   
   sl_zigbee_af_event_init(&thermostat_tick_event, thermostat_tick);
+  sl_zigbee_af_event_init(&decommission_watch_event, decommission_watch_tick);
   
   oled_init(&glib_context);
   retrigger = false;
@@ -244,47 +282,46 @@ void app_process_action(void)
     sl_zigbee_af_event_set_active(&thermostat_tick_event);
   }
 
-  static uint8_t i = 0;
-  bool ran_once = false;
-  while (button_pressed_id[i]!=BTN_NONE){
+  button_event_t event;
+  while (button_queue_pop(&event)) {
+    int16_t target_temp;
+    uint8_t heating_enabled; // system_mode
+    sl_zigbee_af_status_t status = get_target(&target_temp, &heating_enabled);
 
-      if (button_pressed_id[i]){
-      int16_t target_temp;
-      uint8_t heating_enabled; // system_mode
-      sl_zigbee_af_status_t status = get_target(&target_temp, &heating_enabled);
-
-      switch (button_pressed_id[i]){
-        case BTNP:
-          if(status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
-            set_target_temp(target_temp + 50);
-          break;
-        case BTNM:
-          if(status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
-            status = set_target_temp(target_temp - 50);
-          break;
-        case BTNA:
-          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
-            set_system_mode(true);
-          break;
-        case BTNB:
-          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
-            set_system_mode(false);
-          break;
-        case BTNC:
-          if (!on_network()) {
-            sl_zigbee_af_network_steering_start();
-          }
-          break;
-      }
-      retrigger = true;
-      button_pressed_id[i] = BTN_NONE;  
+    switch (event.id){
+      case BTNP:
+        if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
+          set_target_temp(target_temp + 50);
+        break;
+      case BTNM:
+        if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled)
+          set_target_temp(target_temp - 50);
+        break;
+      case BTNA:
+        if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
+          set_system_mode(true);
+        break;
+      case BTNB:
+        if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS)
+          set_system_mode(false);
+        break;
+      case BTNC:
+        if (!on_network()) {
+          sl_zigbee_af_network_steering_start();
+        }
+        break;
     }
-    i = (i + 1) % 16;
+    retrigger = true;
   }
-  if (ran_once){
-    sl_zigbee_af_event_set_inactive(&thermostat_tick_event);
-    sl_zigbee_af_event_set_active(&thermostat_tick_event);
+
+  // The ISR only sets decommission_started; event scheduling has to happen
+  // here in task context. Detect the press edge and arm the watchdog.
+  static bool decommission_hold_prev = false;
+  if (decommission_started && !decommission_hold_prev) {
+    sl_zigbee_af_event_set_active(&decommission_watch_event);
   }
+  decommission_hold_prev = decommission_started;
+
   if (decommission_started && sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) > decommission_start_time + 3000){
     retrigger = true;
   }

@@ -50,6 +50,7 @@ typedef struct {
   uint16_t node_id;
   uint8_t eui64[8];
   uint16_t parent_id;
+  int8_t avg_parent_rssi;
 } ui_state_t;
 
 void gui_draw(glib_context_t *glib_context, gui_screen_t screen, const ui_state_t *state);

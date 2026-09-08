@@ -236,6 +236,7 @@ static void render_current_screen(void){
       ui_state.radio_channel = params.radioChannel;
       ui_state.radio_tx_power = params.radioTxPower;
       ui_state.parent_id = sl_zigbee_get_parent_id();
+      ui_state.avg_parent_rssi = sl_zigbee_get_avg_parent_rssi();
     }
     ui_state.node_id = sl_zigbee_get_node_id();
   }

@@ -12,6 +12,7 @@
 #include "sl_sleeptimer.h"
 #include "ntc.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -84,34 +85,42 @@ static void draw_hints(glib_context_t *ctx, const char *const *lines, uint8_t co
 }
 
 // Right-edge labels whose y positions line up with the physical buttons.
-static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen){
+static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen, const ui_state_t *s){
   static const int16_t hint_y[] = { 0, 35, 85, 120 };
   const char* labels[SCREEN_COUNT][4] = {
     { "ON>" , "OFF>", on_network() ? "Dim>" : "Join>", "Next>"}, //HOME
     { "Join>", "Leave>", "Identify>", "Next>"}, //NETWORK
-    { "A>", "B>", "C>", "Next>"}, //SENSORS
+    { "SI7021>", "NTC>", "Refresh>", "Next>"}, //SENSORS
     { "Up>", "Down>", "", "Next>"}, //SETTINGS
     { "", "", "", "Next>"}, //INFO
   };
 
-  set_color(ctx, COLOR_GREY);
+  const uint16_t colors[SCREEN_COUNT][4] = {
+    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //HOME
+    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //NETWORK
+    { s->control_uses_ntc ? COLOR_GREY : COLOR_GREEN, s->control_uses_ntc ? COLOR_GREEN : COLOR_GREY, COLOR_GREY, COLOR_GREY}, //SENSORS
+    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //SETTINGS
+    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //INFO
+  };
+
   for (uint8_t i = 0; i < sizeof(hint_y) / sizeof(hint_y[0]); i++) {
+    set_color(ctx, colors[screen][i]);
     glib_draw_string(ctx, labels[screen][i], SCREEN_W - CHAR_W * (int16_t)strlen(labels[screen][i]), hint_y[i]);
   }
   set_color(ctx, COLOR_WHITE);
 }
 
 // Title bar plus the shared right-edge button hints.
-static void draw_header(glib_context_t *ctx, const char *title, gui_screen_t screen){
+static void draw_header(glib_context_t *ctx, const char *title, gui_screen_t screen, const ui_state_t *s){
   set_color(ctx, COLOR_ORANGE);
   glib_draw_string(ctx, title, 0, 0);
   set_color(ctx, COLOR_WHITE);
-  draw_button_hints(ctx, screen);
+  draw_button_hints(ctx, screen, s);
 }
 
-static void draw_big_temp(glib_context_t *ctx, int16_t x, int16_t y, int16_t temp, uint8_t scale){
+static void draw_big_temp(glib_context_t *ctx, int16_t x, int16_t y, int16_t temp, uint8_t scale, uint16_t color){
   const int16_t w = 6 * scale;
-  const uint16_t fg = dim(COLOR_WHITE);
+  const uint16_t fg = dim(color);
   char buf[TEXT_COLS + 1];
   
   glib_set_text_size(ctx, scale, scale);
@@ -132,22 +141,23 @@ static void format_temp_x100(char *buf, size_t len, int32_t temp_x100){
            (long)(abs_temp / 100), (long)(abs_temp % 100));
 }
 
-
-// SCREENS
+// -------------------------------------
+// SCREENS -----------------------------
+// -------------------------------------
 
 static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   const int16_t target_temp = s->target_temp;
   const int16_t current_temp = s->control_temp;
   const int16_t other_temp = (int16_t)s->other_temp;
 
-  draw_button_hints(glib_context, SCREEN_HOME);
+  draw_button_hints(glib_context, SCREEN_HOME, s);
 
   if (s->heating_enabled) {
-    draw_big_temp(glib_context, 5, 20, target_temp, 4);
+    draw_big_temp(glib_context, 5, 20, target_temp, 4, COLOR_WHITE);
   }
 
-  draw_big_temp(glib_context, 5, 60, current_temp, 4);
-  draw_big_temp(glib_context, 5, 100, other_temp, 2);
+  draw_big_temp(glib_context, 5, 60, current_temp, 4, COLOR_WHITE);
+  draw_big_temp(glib_context, 5, 100, other_temp, 2, COLOR_GREY);
 
   if (!s->heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);
@@ -179,7 +189,7 @@ static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
 static void draw_network_screen(glib_context_t *ctx, const ui_state_t *s){
   char buf[TEXT_COLS + 1];
 
-  draw_header(ctx, "NETWORK", SCREEN_NETWORK);
+  draw_header(ctx, "NETWORK", SCREEN_NETWORK, s);
 
   if (steering_in_progress()) {
     switch (steering_state()) {
@@ -227,6 +237,8 @@ static void draw_network_screen(glib_context_t *ctx, const ui_state_t *s){
     draw_line(ctx, 4, buf);
     snprintf(buf, sizeof(buf), "Parent 0x%04X", s->parent_id);
     draw_line(ctx, 5, buf);
+    snprintf(buf, sizeof(buf), "  RSSI %d dBm", s->avg_parent_rssi);
+    draw_line(ctx, 6, buf);
   }
 
   //static const char *const hints[] = { "A: join", "B: leave", "C: identify" };
@@ -238,32 +250,36 @@ static void draw_sensors_screen(glib_context_t *ctx, const ui_state_t *s){
   char buf[TEXT_COLS + 1];
   char temp[12];
 
-  draw_header(ctx, "SENSORS", SCREEN_SENSORS);
+  draw_header(ctx, "SENSORS", SCREEN_SENSORS, s);
 
   glib_set_text_color(ctx, dim(s->control_uses_ntc ? COLOR_WHITE : COLOR_GREEN));
   format_temp_x100(temp, sizeof(temp), s->si7021_temp);
-  snprintf(buf, sizeof(buf), "%c SI7021 %s C", s->control_uses_ntc ? ' ' : '>', temp);
+  snprintf(buf, sizeof(buf), "%c SI7021", s->control_uses_ntc ? ' ' : '>');
   draw_line(ctx, 0, buf);
-  snprintf(buf, sizeof(buf), "         %lu.%01lu %%RH",
-           (unsigned long)(s->si7021_rh / 1000), (unsigned long)(s->si7021_rh / 100 % 10));
+  snprintf(buf, sizeof(buf), "%s C",  temp);
   draw_line(ctx, 1, buf);
+  snprintf(buf, sizeof(buf), "%lu.%01lu %%RH",
+           (unsigned long)(s->si7021_rh / 1000), (unsigned long)(s->si7021_rh / 100 % 10));
+  draw_line(ctx, 2, buf);
 
   glib_set_text_color(ctx, dim(s->control_uses_ntc ? COLOR_GREEN : COLOR_WHITE));
   format_temp_x100(temp, sizeof(temp), s->ntc_temp);
-  snprintf(buf, sizeof(buf), "%c NTC    %s C", s->control_uses_ntc ? '>' : ' ', temp);
-  draw_line(ctx, 3, buf);
-  snprintf(buf, sizeof(buf), "         %u counts", s->ntc_counts);
+  snprintf(buf, sizeof(buf), "%c NTC", s->control_uses_ntc ? '>' : ' ');
   draw_line(ctx, 4, buf);
+  snprintf(buf, sizeof(buf), "%s C", temp);
+  draw_line(ctx, 5, buf);
+  snprintf(buf, sizeof(buf), "%u counts", s->ntc_counts);
+  draw_line(ctx, 6, buf);
 
-  static const char *const hints[] = { "A: use SI7021", "B: use NTC", "+/-: swap", "C: re-read now" };
-  draw_hints(ctx, hints, 4);
+  static const char *const hints[] = { "+/-: swap" };
+  draw_hints(ctx, hints, 1);
 }
 
 static void draw_settings_screen(glib_context_t *ctx, const ui_state_t *s){
   char buf[TEXT_COLS + 1];
   char value[12];
 
-  draw_header(ctx, "SETTINGS", SCREEN_SETTINGS);
+  draw_header(ctx, "SETTINGS", SCREEN_SETTINGS, s);
 
   format_temp_x100(value, sizeof(value), s->hysteresis);
   glib_set_text_color(ctx, dim(s->settings_index == SETTING_HYSTERESIS ? COLOR_GREEN : COLOR_WHITE));
@@ -285,7 +301,7 @@ static void draw_settings_screen(glib_context_t *ctx, const ui_state_t *s){
 static void draw_info_screen(glib_context_t *ctx, const ui_state_t *s){
   char buf[TEXT_COLS + 1];
 
-  draw_header(ctx, "DEVICE INFO", SCREEN_INFO);
+  draw_header(ctx, "DEVICE INFO", SCREEN_INFO, s);
 
   draw_line(ctx, 0, "EUI64");
   snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X%02X%02X",

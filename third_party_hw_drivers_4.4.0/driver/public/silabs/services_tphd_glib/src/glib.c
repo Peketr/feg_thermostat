@@ -1151,7 +1151,7 @@ glib_status_t glib_draw_char(glib_context_t *g_context,
                                      y + (yo16 + yy) * size_y,
                                      size_x,
                                      size_y,
-                                     bg);
+                                     color);
           }
         }
         bits <<= 1;

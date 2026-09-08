@@ -90,7 +90,7 @@ static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen){
     { "ON>" , "OFF>", on_network() ? "Dim>" : "Join>", "Next>"}, //HOME
     { "Join>", "Leave>", "Identify>", "Next>"}, //NETWORK
     { "A>", "B>", "C>", "Next>"}, //SENSORS
-    { "Up>", "Down>", "C>", "Next>"}, //SETTINGS
+    { "Up>", "Down>", "", "Next>"}, //SETTINGS
     { "", "", "", "Next>"}, //INFO
   };
 
@@ -132,6 +132,9 @@ static void format_temp_x100(char *buf, size_t len, int32_t temp_x100){
            (long)(abs_temp / 100), (long)(abs_temp % 100));
 }
 
+
+// SCREENS
+
 static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   const int16_t target_temp = s->target_temp;
   const int16_t current_temp = s->control_temp;
@@ -140,10 +143,10 @@ static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   draw_button_hints(glib_context, SCREEN_HOME);
 
   if (s->heating_enabled) {
-    draw_big_temp(glib_context, 5, 20, target_temp, 3);
+    draw_big_temp(glib_context, 5, 20, target_temp, 4);
   }
 
-  draw_big_temp(glib_context, 5, 60, current_temp, 3);
+  draw_big_temp(glib_context, 5, 60, current_temp, 4);
   draw_big_temp(glib_context, 5, 100, other_temp, 2);
 
   if (!s->heating_enabled){
@@ -226,8 +229,8 @@ static void draw_network_screen(glib_context_t *ctx, const ui_state_t *s){
     draw_line(ctx, 5, buf);
   }
 
-  static const char *const hints[] = { "A: join", "B: leave", "C: identify" };
-  draw_hints(ctx, hints, 3);
+  //static const char *const hints[] = { "A: join", "B: leave", "C: identify" };
+  //draw_hints(ctx, hints, 3);
 }
 
 // '>' marks the sensor currently driving the heating control loop.
@@ -275,8 +278,8 @@ static void draw_settings_screen(glib_context_t *ctx, const ui_state_t *s){
   snprintf(buf, sizeof(buf), "%c Bright %u %%", s->settings_index == SETTING_BRIGHTNESS ? '>' : ' ', s->brightness);
   draw_line(ctx, 5, buf);
 
-  static const char *const hints[] = { "A/B: select", "+/-: adjust" };
-  draw_hints(ctx, hints, 2);
+  static const char *const hints[] = { "+/-: adjust" };
+  draw_hints(ctx, hints, 1);
 }
 
 static void draw_info_screen(glib_context_t *ctx, const ui_state_t *s){

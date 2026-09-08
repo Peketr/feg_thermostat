@@ -51,6 +51,9 @@ component:
   vendor: silabs
   id: dmadrv
 - package: simplicity_sdk
+  vendor: silabs
+  id: hal_iadc
+- package: simplicity_sdk
   instance:
   - vcom
   vendor: silabs

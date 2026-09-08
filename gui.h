@@ -5,7 +5,7 @@
 #include "mikroe_ssd1351.h"
 #include "glib.h"
 
-void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled);
+void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, int16_t current_temp_ntc, uint8_t open_valves, bool heating_enabled);
 
 void display_logo();
 

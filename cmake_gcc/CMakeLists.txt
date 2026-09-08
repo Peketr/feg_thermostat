@@ -16,6 +16,7 @@ add_executable(zigbee_minimal_thermostat
     # Add additional sources here
     "../zigbee_helpers.c"
     "../gui.c"
+    "../ntc.c"
 )
 
 target_include_directories(zigbee_minimal_thermostat PUBLIC

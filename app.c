@@ -17,6 +17,7 @@
 
 #include "zigbee_helpers.h"
 #include "gui.h"
+#include "ntc.h"
 
 // RHT Sensor
 #include "sl_i2cspm_instances.h"
@@ -198,6 +199,7 @@ uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool enable){
 // Cached so the decommission-hold watchdog can redraw without recomputing state.
 static int16_t last_target_temp = 0;
 static int16_t last_current_temp = 0;
+static int32_t last_ntc_temp = 0;
 static uint8_t last_open_valves = 0;
 static bool last_heating_enabled = false;
 
@@ -219,6 +221,14 @@ void thermostat_tick(){
 
   }
 
+  // Reference NTC on PC09, reported for comparison only; the Si7021 still drives control.
+  uint16_t ntc_counts = ntc_read_counts();
+  int32_t ntc_temp = ntc_read_temp_c_x100();
+  if (ntc_temp == NTC_TEMP_INVALID)
+    sl_zigbee_app_debug_println("ntc: open/short, counts %d", ntc_counts);
+  else
+    sl_zigbee_app_debug_println("ntc: counts %d, %d.%02d C", ntc_counts, ntc_temp / 100, (int)(ntc_temp < 0 ? -ntc_temp : ntc_temp) % 100);
+
   sl_zigbee_af_status_t status = get_target(&target_temp, &system_mode);
   if (status)
     sl_zigbee_app_debug_println("Target read error: 0x%x",status);
@@ -234,11 +244,12 @@ void thermostat_tick(){
 
   last_target_temp = target_temp;
   last_current_temp = current_temp;
+  last_ntc_temp = ntc_temp;
   last_open_valves = open_valves;
   last_heating_enabled = enable_heating;
 
   //Update Display
-  draw_display(&glib_context, target_temp, current_temp, open_valves,enable_heating);
+  draw_display(&glib_context, target_temp, current_temp, ntc_temp, open_valves,enable_heating);
 
 
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 30000);
@@ -248,7 +259,7 @@ void thermostat_tick(){
 // "hold to decommission" warning stays live without redrawing on every tick.
 void decommission_watch_tick(){
   if (decommission_started) {
-    draw_display(&glib_context, last_target_temp, last_current_temp, last_open_valves, last_heating_enabled);
+    draw_display(&glib_context, last_target_temp, last_current_temp, last_ntc_temp, last_open_valves, last_heating_enabled);
     sl_zigbee_af_event_set_delay_ms(&decommission_watch_event, 250);
   }
 }
@@ -262,6 +273,8 @@ void app_init(){
   sc = sl_si70xx_init(sl_i2cspm_inst0, SI7021_ADDR);
   if (sc)
     sl_zigbee_app_debug_println(" init error: 0x%x",sc);
+
+  ntc_init();
 
   
   sl_zigbee_af_event_init(&thermostat_tick_event, thermostat_tick);

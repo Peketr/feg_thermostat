@@ -32,7 +32,7 @@ void display_logo(){
   mikroe_ssd1351_image(ppcat128x128, 0, 0);
 }
 
-void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, uint8_t open_valves, bool heating_enabled){
+void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t current_temp, int16_t current_temp_ntc, uint8_t open_valves, bool heating_enabled){
   glib_clear(glib_context);
   if(heating_enabled){
     glib_draw_char(glib_context,10,20,48+target_temp/1000,0xFFFF,0x0000,4,4);
@@ -45,6 +45,11 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
   glib_draw_char(glib_context,34,60,48+(current_temp/100%10),0xFFFF,0x0000,4,4);
   glib_draw_char(glib_context,58,60,'.',0xFFFF,0x0000,4,4);
   glib_draw_char(glib_context,82,60,48+(current_temp/10%10),0xFFFF,0x0000,4,4);
+
+  glib_draw_char(glib_context,10,100,48+current_temp_ntc/1000,0xFFFF,0x0000,2,2);
+  glib_draw_char(glib_context,22,100,48+(current_temp_ntc/100%10),0xFFFF,0x0000,2,2);
+  glib_draw_char(glib_context,34,100,'.',0xFFFF,0x0000,2,2);
+  glib_draw_char(glib_context,46,100,48+(current_temp_ntc/10%10),0xFFFF,0x0000,2,2);
 
   if (!heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);

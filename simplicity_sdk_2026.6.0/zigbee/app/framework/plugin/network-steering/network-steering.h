@@ -307,6 +307,7 @@ void sli_zigbee_af_network_steering_cleanup(sl_status_t status);
 void sl_zigbee_af_network_steering_autostart(void);
 
 bool steering_in_progress();
+unsigned char steering_state();
 
 #ifdef __cplusplus
 }

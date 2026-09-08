@@ -27,6 +27,8 @@
 #include "sl_simple_button_instances.h"
 #include "sl_sleeptimer_config.h"
 
+#include <string.h>
+
 #define SLEEPTIMER_TICKS_PER_SECOND \
   (32768ULL / SL_SLEEPTIMER_FREQ_DIVIDER)
 
@@ -75,15 +77,35 @@ static bool button_queue_pop(button_event_t *event){
 sl_zigbee_af_event_t thermostat_tick_event;
 void thermostat_tick();
 
-sl_zigbee_af_event_t decommission_watch_event;
-void decommission_watch_tick();
+sl_zigbee_af_event_t ui_tick_event;
+void ui_tick();
 
 volatile bool retrigger = false;
-// Set/cleared from the button ISR; only read (never armed from the ISR) elsewhere.
-volatile bool decommission_started = false;
-volatile uint32_t decommission_start_time = 0;
 
 glib_context_t glib_context;
+
+#define UI_TICK_PERIOD_MS 250
+#define SCREEN_TIMEOUT_MS 30000
+#define HYSTERESIS_MIN 10
+#define HYSTERESIS_MAX 200
+#define HYSTERESIS_STEP 10
+#define BRIGHTNESS_MIN 20
+#define BRIGHTNESS_MAX 100
+#define BRIGHTNESS_STEP 10
+
+static volatile gui_screen_t current_screen = SCREEN_HOME;
+static uint32_t last_ui_activity_ms = 0;
+
+// User settings, RAM only: they reset to these defaults on every boot.
+static bool control_uses_ntc = false;
+static int16_t hysteresis_x100 = 50;
+static uint8_t max_valves = 2;
+static uint8_t brightness_pct = 100;
+static bool screen_dimmed = false;
+static uint8_t brightness_before_dim = 100;
+static uint8_t settings_index = SETTING_HYSTERESIS;
+
+static ui_state_t ui_state;
 
 static uint8_t fetch_btn_id(const sl_button_t *handle){
   if (handle == &sl_button_btna) {
@@ -154,13 +176,6 @@ void sl_button_on_change(const sl_button_t *handle){
     press_started = false;
   }
 
-  if (handle == &sl_button_btnc) {
-    decommission_started = is_pressed && on_network();
-    if (decommission_started) {
-      decommission_start_time = now_ms();
-    }
-  }
-
   sl_zigbee_app_debug_println("Button %s %s", button_name(handle), is_pressed ? "Pressed" : "Released");
 }
 
@@ -169,9 +184,9 @@ static uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool e
   uint8_t valves_to_open = 0;
 
   if (enable) {
-    if (current_temp < target_temp - 50) {
-      valves_to_open = 2;
-    } else if (current_temp < target_temp + 50) {
+    if (current_temp < target_temp - hysteresis_x100) {
+      valves_to_open = max_valves;
+    } else if (current_temp < target_temp + hysteresis_x100) {
       valves_to_open = 1;
     }
   }
@@ -203,12 +218,44 @@ static uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool e
 // MAIN OPERATION ########################################################
 // #######################################################################
 
-// Cached so the decommission-hold watchdog can redraw without recomputing state.
-static int16_t last_target_temp = 0;
-static int16_t last_current_temp = 0;
-static int32_t last_ntc_temp = 0;
-static uint8_t last_open_valves = 0;
-static bool last_heating_enabled = false;
+// Refreshes the fields that change faster than the 30s sensor tick, then draws.
+static void render_current_screen(void){
+  ui_state.control_uses_ntc = control_uses_ntc;
+  ui_state.hysteresis = hysteresis_x100;
+  ui_state.max_valves = max_valves;
+  ui_state.brightness = brightness_pct;
+  ui_state.settings_index = settings_index;
+  ui_state.uptime_ms = now_ms();
+  ui_state.network_up = on_network();
+
+  if (ui_state.network_up) {
+    sl_zigbee_node_type_t node_type;
+    sl_zigbee_network_parameters_t params;
+    if (sl_zigbee_get_network_parameters(&node_type, &params) == SL_STATUS_OK) {
+      ui_state.pan_id = params.panId;
+      ui_state.radio_channel = params.radioChannel;
+      ui_state.radio_tx_power = params.radioTxPower;
+      ui_state.parent_id = sl_zigbee_get_parent_id();
+    }
+    ui_state.node_id = sl_zigbee_get_node_id();
+  }
+
+  const uint8_t *eui64 = sl_zigbee_get_eui64();
+  if (eui64 != NULL) {
+    memcpy(ui_state.eui64, eui64, sizeof(ui_state.eui64));
+  }
+
+  gui_draw(&glib_context, current_screen, &ui_state);
+}
+
+// Arms the fast UI tick; it keeps rescheduling itself while it is needed.
+static void arm_ui_tick(void){
+  sl_zigbee_af_event_set_active(&ui_tick_event);
+}
+
+static void note_ui_activity(void){
+  last_ui_activity_ms = now_ms();
+}
 
 void thermostat_tick(void){
   sl_status_t sc;
@@ -241,28 +288,44 @@ void thermostat_tick(void){
   }
   sl_zigbee_app_debug_println("target temperature: %d, mode: 0x%x", target_temp / 100, system_mode);
 
-  const int16_t current_temp = temp_data / 10;
-  const bool enable_heating = status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && sc == SL_STATUS_OK && system_mode == 0x04;
+  const int16_t si7021_temp = temp_data / 10;
+  const bool source_valid = control_uses_ntc ? (ntc_temp != NTC_TEMP_INVALID) : (sc == SL_STATUS_OK);
+  const int16_t current_temp = control_uses_ntc ? (int16_t)ntc_temp : si7021_temp;
+  const bool enable_heating = status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && source_valid && system_mode == 0x04;
   const uint8_t open_valves = actuate_heating(current_temp, target_temp, enable_heating);
+
+  sl_zigbee_app_debug_println("control source: %s, temp: %d", control_uses_ntc ? "NTC" : "SI7021", current_temp);
 
   update_running_state(open_valves);
 
-  last_target_temp = target_temp;
-  last_current_temp = current_temp;
-  last_ntc_temp = ntc_temp;
-  last_open_valves = open_valves;
-  last_heating_enabled = enable_heating;
+  ui_state.target_temp = target_temp;
+  ui_state.control_temp = current_temp;
+  ui_state.si7021_temp = sc == SL_STATUS_OK ? si7021_temp : (int16_t)0;
+  ui_state.si7021_rh = rh_data;
+  ui_state.ntc_temp = ntc_temp;
+  ui_state.other_temp = control_uses_ntc ? si7021_temp :(int16_t)ntc_temp;
+  ui_state.ntc_counts = ntc_counts;
+  ui_state.open_valves = open_valves;
+  ui_state.heating_enabled = enable_heating;
 
-  draw_display(&glib_context, target_temp, current_temp, ntc_temp, open_valves, enable_heating);
+  render_current_screen();
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 30000);
 }
 
-// Reschedules itself at a fixed rate only while BTNC is held, so the
-// "hold to decommission" warning stays live without redrawing on every tick.
-void decommission_watch_tick(){
-  if (decommission_started) {
-    draw_display(&glib_context, last_target_temp, last_current_temp, last_ntc_temp, last_open_valves, last_heating_enabled);
-    sl_zigbee_af_event_set_delay_ms(&decommission_watch_event, 250);
+// Runs at a fixed rate while a non-home screen is showing, so those screens
+// stay current and can time out.
+void ui_tick(void){
+  if (current_screen != SCREEN_HOME
+      && now_ms() - last_ui_activity_ms > SCREEN_TIMEOUT_MS) {
+    current_screen = SCREEN_HOME;
+  }
+
+  const bool keep_running = current_screen != SCREEN_HOME;
+
+  render_current_screen();
+
+  if (keep_running) {
+    sl_zigbee_af_event_set_delay_ms(&ui_tick_event, UI_TICK_PERIOD_MS);
   }
 }
 
@@ -280,10 +343,11 @@ void app_init(){
 
   
   sl_zigbee_af_event_init(&thermostat_tick_event, thermostat_tick);
-  sl_zigbee_af_event_init(&decommission_watch_event, decommission_watch_tick);
+  sl_zigbee_af_event_init(&ui_tick_event, ui_tick);
   
   oled_init(&glib_context);
   retrigger = false;
+  last_ui_activity_ms = now_ms();
   
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 2000);
 
@@ -295,63 +359,138 @@ static void refresh_thermostat_tick(void){
   sl_zigbee_af_event_set_active(&thermostat_tick_event);
 }
 
-static void handle_button_event(const button_event_t *event){
+static void cycle_screen(bool backwards){
+  const gui_screen_t screen = current_screen;
+  current_screen = backwards
+                   ? (gui_screen_t)((screen + SCREEN_COUNT - 1) % SCREEN_COUNT)
+                   : (gui_screen_t)((screen + 1) % SCREEN_COUNT);
+  sl_zigbee_app_debug_println("screen: %d", current_screen);
+}
+
+static void adjust_setting(int8_t direction){
+  if (settings_index == SETTING_HYSTERESIS) {
+    int16_t value = hysteresis_x100 + direction * HYSTERESIS_STEP;
+    if (value < HYSTERESIS_MIN) {
+      value = HYSTERESIS_MIN;
+    } else if (value > HYSTERESIS_MAX) {
+      value = HYSTERESIS_MAX;
+    }
+    hysteresis_x100 = value;
+  } else if (settings_index == SETTING_BRIGHTNESS) {
+    int16_t value = brightness_pct + direction * BRIGHTNESS_STEP;
+    if (value < BRIGHTNESS_MIN) {
+      value = BRIGHTNESS_MIN;
+    } else if (value > BRIGHTNESS_MAX) {
+      value = BRIGHTNESS_MAX;
+    }
+    brightness_pct = (uint8_t)value;
+  } else {
+    max_valves = direction > 0 ? 2 : 1;
+  }
+}
+
+// Buttons other than D are remapped per screen; see the screen hints in gui.c.
+static void handle_screen_button(const button_event_t *event){
   int16_t target_temp;
   uint8_t heating_enabled;
   const sl_zigbee_af_status_t status = get_target(&target_temp, &heating_enabled);
 
-  switch (event->id) {
-    case BTNP:
-      if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled) {
-        set_target_temp(target_temp + 50);
-      }
-      break;
-    case BTNM:
-      if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled) {
-        set_target_temp(target_temp - 50);
-      }
-      break;
-    case BTNA:
-      if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS) {
-        set_system_mode(true);
-      }
-      break;
-    case BTNB:
-      if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS) {
-        set_system_mode(false);
-      }
-      break;
-    case BTNC:
-      if (!on_network()) {
+  switch (current_screen) {
+    case SCREEN_NETWORK:
+      if (event->id == BTNA && !on_network()) {
         sl_zigbee_af_network_steering_start();
+      } else if (event->id == BTNB && on_network()) {
+        sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
+      } else if (event->id == BTNC) {
+        display_logo();
       }
       break;
+
+    case SCREEN_SENSORS:
+      if (event->id == BTNA) {
+        control_uses_ntc = false;
+      } else if (event->id == BTNB) {
+        control_uses_ntc = true;
+      } else if (event->id == BTNP || event->id == BTNM) {
+        control_uses_ntc = !control_uses_ntc;
+      }
+      retrigger = true;
+      break;
+
+    case SCREEN_SETTINGS:
+      if (event->id == BTNA) {
+        settings_index = (settings_index + SETTING_COUNT - 1) % SETTING_COUNT;
+      } else if (event->id == BTNB) {
+        settings_index = (settings_index + 1) % SETTING_COUNT;
+      } else if (event->id == BTNP) {
+        adjust_setting(1);
+        retrigger = true;
+      } else if (event->id == BTNM) {
+        adjust_setting(-1);
+        retrigger = true;
+      }
+      break;
+
+    case SCREEN_INFO:
+      break;
+
+    case SCREEN_HOME:
     default:
+      switch (event->id) {
+        case BTNP:
+          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled) {
+            set_target_temp(target_temp + 50);
+          }
+          break;
+        case BTNM:
+          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && heating_enabled) {
+            set_target_temp(target_temp - 50);
+          }
+          break;
+        case BTNA:
+          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS) {
+            set_system_mode(true);
+          }
+          break;
+        case BTNB:
+          if (status == SL_ZIGBEE_ZCL_STATUS_SUCCESS) {
+            set_system_mode(false);
+          }
+          break;
+        case BTNC:
+          if (!on_network()) {
+            sl_zigbee_af_network_steering_start();
+          }
+          break;
+        default:
+          break;
+      }
+      retrigger = true;
       break;
   }
-
-  retrigger = true;
 }
 
-static void update_decommission_watchdog(void){
-  static bool decommission_hold_prev = false;
-
-  if (decommission_started && !decommission_hold_prev) {
-    sl_zigbee_af_event_set_active(&decommission_watch_event);
-  }
-  decommission_hold_prev = decommission_started;
-
-  if (!decommission_started) {
-    return;
+static void handle_button_event(const button_event_t *event){
+  if (screen_dimmed) {
+    brightness_pct = brightness_before_dim;
+    screen_dimmed = false;
+  } else if (current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
+    brightness_before_dim = brightness_pct;
+    brightness_pct = (uint8_t)(brightness_pct * 20u / 100u);
+    screen_dimmed = true;
   }
 
-  const uint32_t now = now_ms();
-  if (now > decommission_start_time + 3000) {
-    retrigger = true;
+  note_ui_activity();
+
+  if (event->id == BTND) {
+    cycle_screen(event->long_press);
+  } else {
+    handle_screen_button(event);
   }
-  if (now > decommission_start_time + 10000) {
-    sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
-    decommission_started = false;
+
+  if (current_screen != SCREEN_HOME) {
+    arm_ui_tick();
+  } else {
     retrigger = true;
   }
 }
@@ -367,7 +506,6 @@ void app_process_action(void)
     handle_button_event(&event);
   }
 
-  update_decommission_watchdog();
 }
 
 void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,

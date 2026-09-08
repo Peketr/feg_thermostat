@@ -919,6 +919,10 @@ WEAK(sl_zigbee_node_type_t sl_zigbee_af_network_steering_get_node_type_cb(sl_zig
           : sli_zigbee_af_current_zigbee_pro_network->nodeType);
 }
 
+unsigned char steering_state(){
+  return sli_zigbee_af_network_steering_state;
+}
+
 bool steering_in_progress(){
   return sli_zigbee_af_network_steering_state != SL_ZIGBEE_AF_PLUGIN_NETWORK_STEERING_STATE_NONE;
 }

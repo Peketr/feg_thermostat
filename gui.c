@@ -5,24 +5,12 @@
 
 #include "zigbee_helpers.h"
 #include "start_image.h"
-#include "mikroe_ssd1351_image.h"
 #include "sl_sleeptimer.h"
 
 
 extern bool decommission_started;
 extern uint32_t decommission_start_time;
 
-static uint16_t rgb565_to_rbg565(uint16_t color)
-{
-  uint16_t red = color & 0xF800;
-  uint16_t green = (color >> 5) & 0x3F;
-  uint16_t blue = color & 0x1F;
-
-  uint16_t blue6 = (blue << 1) | (blue >> 4);
-  uint16_t green5 = green >> 1;
-
-  return red | (blue6 << 5) | green5;
-}
 
 sl_status_t oled_init(glib_context_t* glib_context){
   //  OLED initialization.
@@ -34,7 +22,6 @@ sl_status_t oled_init(glib_context_t* glib_context){
     glib_enable_display(true);
     
     mikroe_ssd1351_image(ppcat128x128, 0, 0);
-    mikroe_ssd1351_image(mikroe_with_slogan, 16, 96);
     //glib_update_display();  
     
   }
@@ -62,10 +49,10 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
   if (!heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);
   } else if (open_valves == 0) {
-    glib_set_text_color(glib_context,rgb565_to_rbg565(0x001f)); //blue
+    glib_set_text_color(glib_context,0x001f); //blue
     glib_draw_string(glib_context, "Idle", 0, 0);
   }else if (open_valves == 1){
-    glib_set_text_color(glib_context,rgb565_to_rbg565(0xfce0)); //orange
+    glib_set_text_color(glib_context,0xfce0); //orange
     glib_draw_string(glib_context, "Half Heat", 0, 0);
   }else if (open_valves == 2){
     glib_set_text_color(glib_context,0xf800); //red
@@ -75,13 +62,13 @@ void draw_display(glib_context_t* glib_context, int16_t target_temp, int16_t cur
 
 
   if (steering_in_progress()) {
-    glib_set_text_color(glib_context,rgb565_to_rbg565(0xfce0)); //orange
+    glib_set_text_color(glib_context,0xfce0); //orange
     glib_draw_string(glib_context, "Connecting", 65, 0);
   } else if (decommission_started && sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count()) > decommission_start_time + 3000){
-    glib_set_text_color(glib_context,rgb565_to_rbg565(0xf800)); //red
+    glib_set_text_color(glib_context,0xf800); //red
     glib_draw_string(glib_context, "Disconnecting", 50, 0);
   } else if (on_network()){
-    glib_set_text_color(glib_context,rgb565_to_rbg565(0x07e0)); //green
+    glib_set_text_color(glib_context,0x07e0); //green
     glib_draw_string(glib_context, "Connected", 65, 0);
   } else {
     glib_set_text_color(glib_context,0xffff); //white

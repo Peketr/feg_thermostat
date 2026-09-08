@@ -36,7 +36,7 @@
 static uint8_t cols[ 2 ]    = { OLEDC_COL_OFF, OLEDC_COL_OFF + OLEDC_SCREEN_WIDTH - 1 };          
 static uint8_t rows[ 2 ]    = { OLEDC_ROW_OFF, OLEDC_ROW_OFF + OLEDC_SCREEN_HEIGHT - 1 };
 
-static uint8_t OLEDC_DEFAULT_REMAP = 0x70;
+static uint8_t OLEDC_DEFAULT_REMAP = 0x74;
 //OLEDC_RMP_INC_HOR | OLEDC_RMP_COLOR_REV |
 //                                OLEDC_RMP_SEQ_RGB | OLEDC_RMP_SCAN_REV |
 //                                OLEDC_RMP_SPLIT_ENABLE | OLEDC_COLOR_65K;
@@ -268,7 +268,7 @@ static void box_area
 {
     uint8_t   cmd       = OLEDC_WRITE_RAM;
     uint16_t  cnt       = ( end_col - start_col ) * ( end_row - start_row );
-    uint8_t   clr[ 2 ]  = { 0 };
+    uint16_t  clr2[ 128 ] = { color };
 
     if( ( start_col > OLEDC_SCREEN_WIDTH ) ||
         ( end_col > OLEDC_SCREEN_WIDTH ) )
@@ -286,8 +286,6 @@ static void box_area
     cols[ 1 ] = OLEDC_COL_OFF + end_col - 1;
     rows[ 0 ] = OLEDC_ROW_OFF + start_row;
     rows[ 1 ] = OLEDC_ROW_OFF + end_row - 1;
-    clr[ 0 ] |= color >> 8;
-    clr[ 1 ] |= color & 0x00FF;
 
     oledc_more_arg_commands( ctx, OLEDC_SET_COL_ADDRESS, cols, 2 );
     oledc_more_arg_commands( ctx, OLEDC_SET_ROW_ADDRESS, rows, 2 );
@@ -296,10 +294,10 @@ static void box_area
     spi_master_write( &ctx->spi, &cmd, 1 );
     digital_out_high( &ctx->dc );
     
-    while( cnt-- )
+    while( cnt )
     {
-       spi_master_write( &ctx->spi, &clr[0], 1 );
-       spi_master_write( &ctx->spi, &clr[1], 1 ); 
+       spi_master_write( &ctx->spi, (uint8_t*) clr2,  sizeof(clr2) *2 );
+       cnt -= 128; 
     }
     spi_master_deselect_device( ctx->chip_select );  
 }
@@ -316,8 +314,6 @@ static void draw_area
 {
     uint16_t    tmp  = 0;
     uint8_t     cmd  = OLEDC_WRITE_RAM;
-    uint8_t     frb  = 0;
-    uint8_t     srb  = 0;
     uint16_t    cnt  = ( end_col - start_col ) * ( end_row - start_row );
     
     const uint8_t*  ptr = img + OLEDC_IMG_HEAD;
@@ -346,15 +342,15 @@ static void draw_area
     spi_master_write( &ctx->spi, &cmd, 1 );
     digital_out_high( &ctx->dc );
     
-    while( cnt-- )
+    //can only be used for writes of full screen now
+    while( cnt )
     {
-        frb = ptr[ tmp + 1 ];
-        srb = ptr[ tmp ];
-        spi_master_write( &ctx->spi, &frb, 1 );
-        spi_master_write( &ctx->spi, &srb, 1 ); 
+        spi_master_write( &ctx->spi, (uint8_t*)ptr+tmp, 128*32 ); 
        
-        tmp += 2;
+        cnt -= 64*32;
+        tmp += 128*32;
     }
+
     spi_master_deselect_device( ctx->chip_select );  
 }
 

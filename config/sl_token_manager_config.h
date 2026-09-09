@@ -37,7 +37,7 @@
 #if defined(SL_COMMON_TOKEN_MANAGER_ENABLE_DYNAMIC_TOKENS) || defined(SL_TOKEN_MANAGER_BACKWARD_COMPATIBILITY)
 // <e SL_TOKEN_MANAGER_CUSTOM_TOKENS_PRESENT> Enable Custom Tokens
 // <i> Default: 0
-#define SL_TOKEN_MANAGER_CUSTOM_TOKENS_PRESENT  0
+#define SL_TOKEN_MANAGER_CUSTOM_TOKENS_PRESENT  1
 
 // <s SL_TOKEN_MANAGER_CUSTOM_TOKEN_HEADER> File containing custom tokens
 // <i> Default: "sl_custom_token_header.h"

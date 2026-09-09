@@ -28,6 +28,23 @@
  *
  ******************************************************************************/
 
+#include <stdint.h>
+
+#ifndef THERMOSTAT_SETTINGS_TOKEN_DEFINED
+#define THERMOSTAT_SETTINGS_TOKEN_DEFINED
+
+typedef struct {
+	uint8_t control_uses_ntc;
+	int16_t hysteresis_x100;
+	uint8_t max_valves;
+	uint8_t brightness_pct;
+} thermostat_settings_token_t;
+
+#define THERMOSTAT_SETTINGS_TOKEN \
+	SL_TOKEN_GET_DYNAMIC_TOKEN((SL_TOKEN_NVM3_REGION_USER | 0x0001), 0)
+
+#endif
+
 /***************************************************************************//**
  * Custom Tokens Usage Examples
  *

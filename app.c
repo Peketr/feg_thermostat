@@ -26,6 +26,9 @@
 #include "sl_simple_led_instances.h"
 #include "sl_simple_button_instances.h"
 #include "sl_sleeptimer_config.h"
+#include "sl_token_manager_api.h"
+#include "sl_token_manager_defines.h"
+#include "sl_custom_token_header.h"
 
 #include <string.h>
 
@@ -96,7 +99,7 @@ glib_context_t glib_context;
 static volatile gui_screen_t current_screen = SCREEN_HOME;
 static uint32_t last_ui_activity_ms = 0;
 
-// User settings, RAM only: they reset to these defaults on every boot.
+// User settings.
 static bool control_uses_ntc = false;
 static int16_t hysteresis_x100 = 50;
 static uint8_t max_valves = 2;
@@ -106,6 +109,44 @@ static uint8_t brightness_before_dim = 100;
 static uint8_t settings_index = SETTING_HYSTERESIS;
 
 static ui_state_t ui_state;
+
+static void save_settings(void){
+  thermostat_settings_token_t settings = {
+    .control_uses_ntc = control_uses_ntc,
+    .hysteresis_x100 = hysteresis_x100,
+    .max_valves = max_valves,
+    .brightness_pct = brightness_pct
+  };
+
+  const sl_status_t status = sl_token_manager_set_data(THERMOSTAT_SETTINGS_TOKEN,
+                                                        &settings,
+                                                        sizeof(settings));
+  if (status != SL_STATUS_OK) {
+    sl_zigbee_app_debug_println("settings save error: 0x%x", status);
+  }
+}
+
+static void load_settings(void){
+  thermostat_settings_token_t settings;
+  const sl_status_t status = sl_token_manager_get_data(THERMOSTAT_SETTINGS_TOKEN,
+                                                        &settings,
+                                                        sizeof(settings));
+  if (status != SL_STATUS_OK
+      || settings.control_uses_ntc > 1
+      || settings.hysteresis_x100 < HYSTERESIS_MIN
+      || settings.hysteresis_x100 > HYSTERESIS_MAX
+      || settings.max_valves < 1
+      || settings.max_valves > 2
+      || settings.brightness_pct < BRIGHTNESS_MIN
+      || settings.brightness_pct > BRIGHTNESS_MAX) {
+    return;
+  }
+
+  control_uses_ntc = settings.control_uses_ntc;
+  hysteresis_x100 = settings.hysteresis_x100;
+  max_valves = settings.max_valves;
+  brightness_pct = settings.brightness_pct;
+}
 
 static uint8_t fetch_btn_id(const sl_button_t *handle){
   if (handle == &sl_button_btna) {
@@ -342,6 +383,8 @@ void app_init(){
 
   ntc_init();
 
+  load_settings();
+
   
   sl_zigbee_af_event_init(&thermostat_tick_event, thermostat_tick);
   sl_zigbee_af_event_init(&ui_tick_event, ui_tick);
@@ -388,6 +431,8 @@ static void adjust_setting(int8_t direction){
   } else {
     max_valves = direction > 0 ? 2 : 1;
   }
+
+  save_settings();
 }
 
 // Buttons other than D are remapped per screen; see the screen hints in gui.c.
@@ -415,6 +460,7 @@ static void handle_screen_button(const button_event_t *event){
       } else if (event->id == BTNP || event->id == BTNM) {
         control_uses_ntc = !control_uses_ntc;
       }
+      save_settings();
       retrigger = true;
       break;
 

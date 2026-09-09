@@ -24,6 +24,7 @@
 #define COLOR_RED    0xf800
 #define COLOR_GREEN  0x07e0
 #define COLOR_GREY   0x8410
+#define COLOR_DARK_GREY 0x4208
 
 // 6x8 base font: 21 columns at text size 1.
 #define LINE_H 10
@@ -157,7 +158,7 @@ static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   }
 
   draw_big_temp(glib_context, 5, 60, current_temp, 4, COLOR_WHITE);
-  draw_big_temp(glib_context, 5, 100, other_temp, 2, COLOR_GREY);
+  draw_big_temp(glib_context, 5, 100, other_temp, 2, COLOR_DARK_GREY);
 
   if (!s->heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);

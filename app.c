@@ -42,6 +42,7 @@
 #define BTND 4
 #define BTNP 5
 #define BTNM 6
+#define BUTTON_DEBOUNCE_MS 30
 
 // ISR-safe single-producer (ISR) / single-consumer (main loop) button event queue.
 typedef struct {
@@ -205,16 +206,30 @@ void sl_button_on_change(const sl_button_t *handle){
   static bool press_started = false;
   static uint8_t btn = BTN_NONE;
   static uint32_t pressbegin = 0;
+  static uint32_t last_edge_ms[BTNM + 1];
+  static bool edge_seen[BTNM + 1];
 
   const bool is_pressed = handle->get_state(handle) == SL_SIMPLE_BUTTON_PRESSED;
   const uint8_t button_id = fetch_btn_id(handle);
+  const uint32_t edge_ms = now_ms();
+
+  if (button_id == BTN_NONE) {
+    return;
+  }
+
+  if (edge_seen[button_id]
+      && edge_ms - last_edge_ms[button_id] < BUTTON_DEBOUNCE_MS) {
+    return;
+  }
+  edge_seen[button_id] = true;
+  last_edge_ms[button_id] = edge_ms;
 
   if (!press_started && is_pressed) {
     press_started = true;
     btn = button_id;
-    pressbegin = now_ms();
+    pressbegin = edge_ms;
   } else if (press_started && !is_pressed && button_id == btn) {
-    const uint32_t held_ms = now_ms() - pressbegin;
+    const uint32_t held_ms = edge_ms - pressbegin;
     button_queue_push(btn, held_ms > 1000, held_ms > 10000);
     btn = BTN_NONE;
     press_started = false;

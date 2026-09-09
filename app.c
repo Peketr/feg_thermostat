@@ -140,8 +140,7 @@ static void load_settings(void){
       || settings.max_valves < 1
       || settings.max_valves > 2
       || settings.brightness_pct < BRIGHTNESS_MIN
-      || settings.brightness_pct > BRIGHTNESS_MAX
-      || settings.show_extra_sensor > 1) {
+      || settings.brightness_pct > BRIGHTNESS_MAX) {
     return;
   }
 
@@ -330,7 +329,6 @@ void thermostat_tick(void){
     sl_zigbee_app_debug_println("error: 0x%x", sc);
   } else {
     sl_zigbee_app_debug_println("periodic: %d,%d", rh_data / 1000, temp_data / 1000);
-    update_measurement(rh_data, temp_data);
   }
 
   const uint16_t ntc_counts = ntc_read_counts();
@@ -354,6 +352,12 @@ void thermostat_tick(void){
   const int16_t current_temp = control_uses_ntc ? (int16_t)ntc_temp : si7021_temp;
   const bool enable_heating = status == SL_ZIGBEE_ZCL_STATUS_SUCCESS && source_valid && system_mode == 0x04;
   const uint8_t open_valves = actuate_heating(current_temp, target_temp, enable_heating);
+
+  if (source_valid) {
+    update_measurement(rh_data, 10 * current_temp);
+  } else {
+    sl_zigbee_app_debug_println("measurement update skipped due to invalid source");
+  }
 
   sl_zigbee_app_debug_println("control source: %s, temp: %d", control_uses_ntc ? "NTC" : "SI7021", current_temp);
 

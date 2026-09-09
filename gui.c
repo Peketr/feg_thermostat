@@ -97,7 +97,7 @@ static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen, const ui
   };
 
   const uint16_t colors[SCREEN_COUNT][4] = {
-    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //HOME
+    { s->heating_enabled ? COLOR_BLACK : COLOR_GREY, s->heating_enabled ? COLOR_GREY : COLOR_BLACK, COLOR_GREY, COLOR_GREY}, //HOME
     { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //NETWORK
     { s->control_uses_ntc ? COLOR_GREY : COLOR_GREEN, s->control_uses_ntc ? COLOR_GREEN : COLOR_GREY, COLOR_GREY, COLOR_GREY}, //SENSORS
     { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //SETTINGS

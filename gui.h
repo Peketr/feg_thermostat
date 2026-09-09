@@ -22,6 +22,7 @@ typedef enum {
   SETTING_HYSTERESIS = 0,
   SETTING_MAX_VALVES,
   SETTING_BRIGHTNESS,
+  SETTING_SHOW_EXTRA_SENSOR,
   SETTING_COUNT
 } gui_setting_t;
 
@@ -41,6 +42,7 @@ typedef struct {
   int16_t hysteresis;       // hundredths of a degree C
   uint8_t max_valves;
   uint8_t brightness;       // percent, scales every drawn colour
+  bool show_extra_sensor;  // whether to show the extra sensor on the home screen
   uint8_t settings_index;
   uint32_t uptime_ms;
   bool network_up;

@@ -158,7 +158,10 @@ static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   }
 
   draw_big_temp(glib_context, 5, 60, current_temp, 4, COLOR_WHITE);
-  draw_big_temp(glib_context, 5, 100, other_temp, 2, COLOR_DARK_GREY);
+
+  if(s->show_extra_sensor) {
+    draw_big_temp(glib_context, 5, 100, other_temp, 2, COLOR_DARK_GREY);
+  }
 
   if (!s->heating_enabled){
     glib_draw_string(glib_context, "Off", 0, 0);
@@ -284,16 +287,20 @@ static void draw_settings_screen(glib_context_t *ctx, const ui_state_t *s){
 
   format_temp_x100(value, sizeof(value), s->hysteresis);
   glib_set_text_color(ctx, dim(s->settings_index == SETTING_HYSTERESIS ? COLOR_GREEN : COLOR_WHITE));
-  snprintf(buf, sizeof(buf), "%c Hyst   %s C", s->settings_index == SETTING_HYSTERESIS ? '>' : ' ', value);
+  snprintf(buf, sizeof(buf), "%c Hyst    %s C", s->settings_index == SETTING_HYSTERESIS ? '>' : ' ', value);
   draw_line(ctx, 1, buf);
 
   glib_set_text_color(ctx, dim(s->settings_index == SETTING_MAX_VALVES ? COLOR_GREEN : COLOR_WHITE));
-  snprintf(buf, sizeof(buf), "%c Valves %u", s->settings_index == SETTING_MAX_VALVES ? '>' : ' ', s->max_valves);
+  snprintf(buf, sizeof(buf), "%c Valves  %u", s->settings_index == SETTING_MAX_VALVES ? '>' : ' ', s->max_valves);
   draw_line(ctx, 3, buf);
 
   glib_set_text_color(ctx, dim(s->settings_index == SETTING_BRIGHTNESS ? COLOR_GREEN : COLOR_WHITE));
-  snprintf(buf, sizeof(buf), "%c Bright %u %%", s->settings_index == SETTING_BRIGHTNESS ? '>' : ' ', s->brightness);
+  snprintf(buf, sizeof(buf), "%c Bright  %u %%", s->settings_index == SETTING_BRIGHTNESS ? '>' : ' ', s->brightness);
   draw_line(ctx, 5, buf);
+
+  glib_set_text_color(ctx, dim(s->settings_index == SETTING_SHOW_EXTRA_SENSOR ? COLOR_GREEN : COLOR_WHITE));
+  snprintf(buf, sizeof(buf), "%c AuxTemp %s", s->settings_index == SETTING_SHOW_EXTRA_SENSOR ? '>' : ' ', s->show_extra_sensor ? "ON" : "OFF");
+  draw_line(ctx, 7, buf);
 
   static const char *const hints[] = { "+/-: adjust" };
   draw_hints(ctx, hints, 1);

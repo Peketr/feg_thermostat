@@ -104,6 +104,7 @@ static bool control_uses_ntc = false;
 static int16_t hysteresis_x100 = 50;
 static uint8_t max_valves = 2;
 static uint8_t brightness_pct = 100;
+static bool show_extra_sensor = false;
 static bool screen_dimmed = false;
 static uint8_t brightness_before_dim = 100;
 static uint8_t settings_index = SETTING_HYSTERESIS;
@@ -115,7 +116,8 @@ static void save_settings(void){
     .control_uses_ntc = control_uses_ntc,
     .hysteresis_x100 = hysteresis_x100,
     .max_valves = max_valves,
-    .brightness_pct = brightness_pct
+    .brightness_pct = brightness_pct,
+    .show_extra_sensor = show_extra_sensor
   };
 
   const sl_status_t status = sl_token_manager_set_data(THERMOSTAT_SETTINGS_TOKEN,
@@ -138,7 +140,8 @@ static void load_settings(void){
       || settings.max_valves < 1
       || settings.max_valves > 2
       || settings.brightness_pct < BRIGHTNESS_MIN
-      || settings.brightness_pct > BRIGHTNESS_MAX) {
+      || settings.brightness_pct > BRIGHTNESS_MAX
+      || settings.show_extra_sensor > 1) {
     return;
   }
 
@@ -146,6 +149,7 @@ static void load_settings(void){
   hysteresis_x100 = settings.hysteresis_x100;
   max_valves = settings.max_valves;
   brightness_pct = settings.brightness_pct;
+  show_extra_sensor = settings.show_extra_sensor;
 }
 
 static uint8_t fetch_btn_id(const sl_button_t *handle){
@@ -265,6 +269,7 @@ static void render_current_screen(void){
   ui_state.hysteresis = hysteresis_x100;
   ui_state.max_valves = max_valves;
   ui_state.brightness = brightness_pct;
+  ui_state.show_extra_sensor = show_extra_sensor;
   ui_state.settings_index = settings_index;
   ui_state.uptime_ms = now_ms();
   ui_state.network_up = on_network();
@@ -349,6 +354,7 @@ void thermostat_tick(void){
   ui_state.ntc_counts = ntc_counts;
   ui_state.open_valves = open_valves;
   ui_state.heating_enabled = enable_heating;
+  ui_state.show_extra_sensor = show_extra_sensor;
 
   render_current_screen();
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 30000);
@@ -428,7 +434,10 @@ static void adjust_setting(int8_t direction){
       value = BRIGHTNESS_MAX;
     }
     brightness_pct = (uint8_t)value;
-  } else {
+  } else if (settings_index == SETTING_SHOW_EXTRA_SENSOR) {
+    show_extra_sensor = !show_extra_sensor;
+  }
+  else {
     max_valves = direction > 0 ? 2 : 1;
   }
 

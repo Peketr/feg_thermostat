@@ -83,11 +83,10 @@ void thermostat_tick();
 sl_zigbee_af_event_t ui_tick_event;
 void ui_tick();
 
-volatile bool retrigger = false;
-
 glib_context_t glib_context;
 
 #define UI_TICK_PERIOD_MS 250
+#define SELF_IDENTIFY_LENGTH_MS 2000
 #define SCREEN_TIMEOUT_MS 30000
 #define HYSTERESIS_MIN 10
 #define HYSTERESIS_MAX 200
@@ -396,17 +395,14 @@ void app_init(){
   sl_zigbee_af_event_init(&ui_tick_event, ui_tick);
   
   oled_init(&glib_context);
-  retrigger = false;
   last_ui_activity_ms = now_ms();
   
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 2000);
 
 }
 
-static void refresh_thermostat_tick(void){
-  retrigger = false;
-  sl_zigbee_af_event_set_inactive(&thermostat_tick_event);
-  sl_zigbee_af_event_set_active(&thermostat_tick_event);
+static void trigger_thermostat_tick(void){
+  sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 100);
 }
 
 static void cycle_screen(bool backwards){
@@ -458,6 +454,7 @@ static void handle_screen_button(const button_event_t *event){
         sl_zigbee_leave_network(SL_ZIGBEE_LEAVE_NWK_WITH_NO_OPTION);
       } else if (event->id == BTNC) {
         display_logo();
+        sl_zigbee_af_event_set_delay_ms(&ui_tick_event, SELF_IDENTIFY_LENGTH_MS);
       }
       break;
 
@@ -470,7 +467,7 @@ static void handle_screen_button(const button_event_t *event){
         control_uses_ntc = !control_uses_ntc;
       }
       save_settings();
-      retrigger = true;
+      trigger_thermostat_tick();
       break;
 
     case SCREEN_SETTINGS:
@@ -480,10 +477,10 @@ static void handle_screen_button(const button_event_t *event){
         settings_index = (settings_index + 1) % SETTING_COUNT;
       } else if (event->id == BTNP) {
         adjust_setting(1);
-        retrigger = true;
+        trigger_thermostat_tick();
       } else if (event->id == BTNM) {
         adjust_setting(-1);
-        retrigger = true;
+        trigger_thermostat_tick();
       }
       break;
 
@@ -521,7 +518,7 @@ static void handle_screen_button(const button_event_t *event){
         default:
           break;
       }
-      retrigger = true;
+      trigger_thermostat_tick();
       break;
   }
 }
@@ -547,21 +544,16 @@ static void handle_button_event(const button_event_t *event){
   if (current_screen != SCREEN_HOME) {
     arm_ui_tick();
   } else {
-    retrigger = true;
+    trigger_thermostat_tick();
   }
 }
 
 void app_process_action(void)
 {
-  if (retrigger) {
-    refresh_thermostat_tick();
-  }
-
   button_event_t event;
   while (button_queue_pop(&event)) {
     handle_button_event(&event);
   }
-
 }
 
 void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
@@ -580,7 +572,8 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
   UNUSED_VAR(value);
 
   if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_CLUSTER_ID && (attributeId== ZCL_SYSTEM_MODE_ATTRIBUTE_ID || attributeId == ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID)){
-    retrigger = true;
+    //Trick to trigger a thermostat tick to update the display and actuate heating.
+    button_queue_push(BTN_NONE, false, false);
   }
 }
 
@@ -610,7 +603,7 @@ void sl_zigbee_af_network_steering_complete_cb(sl_status_t status,
   UNUSED_VAR(joinAttempts);
   UNUSED_VAR(finalState);
   sl_zigbee_app_debug_println("%s network %s: 0x%02X", "Join", "complete", status);
-  retrigger = true;
+  trigger_thermostat_tick();
 }
 
 /** @brief
@@ -623,7 +616,8 @@ void sl_zigbee_af_radio_needs_calibrating_cb(void)
 }
 
 void sli_zigbee_af_stack_status_callback(sl_status_t status){
-  retrigger = true;
+  //Trick to trigger a thermostat tick to update the display and actuate heating.
+  button_queue_push(BTN_NONE, false, false);
   switch (status) {
     case SL_STATUS_NETWORK_UP:
     case SL_STATUS_ZIGBEE_TRUST_CENTER_SWAP_EUI_HAS_CHANGED:      // also means NETWORK_UP

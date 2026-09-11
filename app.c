@@ -104,6 +104,8 @@ glib_context_t glib_context;
 
 static volatile gui_screen_t current_screen = SCREEN_HOME;
 static uint32_t last_ui_activity_ms = 0;
+static volatile bool btnd_pressed = false;
+static volatile uint32_t btnd_pressbegin_ms = 0;
 
 // User settings.
 static bool control_uses_ntc = false;
@@ -257,9 +259,17 @@ void sl_button_on_change(const sl_button_t *handle){
     press_started = true;
     btn = button_id;
     pressbegin = edge_ms;
+    if (button_id == BTND) {
+      btnd_pressed = true;
+      btnd_pressbegin_ms = edge_ms;
+      button_queue_push(BTN_NONE, false, false);
+    }
   } else if (press_started && !is_pressed && button_id == btn) {
     const uint32_t held_ms = edge_ms - pressbegin;
-    button_queue_push(btn, held_ms > 1000, held_ms > 10000);
+    if (button_id == BTND) {
+      btnd_pressed = false;
+    }
+    button_queue_push(btn, held_ms >= 1000, held_ms >= 10000);
     btn = BTN_NONE;
     press_started = false;
   }
@@ -319,6 +329,8 @@ static void render_current_screen(void){
   ui_state.dim_brightness = dim_brightness_pct;
   ui_state.settings_index = settings_index;
   ui_state.display_settings_index = display_settings_index;
+  ui_state.btnd_previous = btnd_pressed
+                           && now_ms() - btnd_pressbegin_ms >= 1000;
   ui_state.uptime_ms = now_ms();
   ui_state.network_up = on_network();
 
@@ -424,6 +436,7 @@ void ui_tick(void){
   }
 
   const bool keep_running = current_screen != SCREEN_HOME
+                            || btnd_pressed
                             || (auto_dim_enabled && !screen_dimmed);
 
   render_current_screen();

@@ -88,13 +88,14 @@ static void draw_hints(glib_context_t *ctx, const char *const *lines, uint8_t co
 // Right-edge labels whose y positions line up with the physical buttons.
 static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen, const ui_state_t *s){
   static const int16_t hint_y[] = { 0, 35, 85, 120 };
+  const char *d_hint = s->btnd_previous ? "Previous>" : "Next>";
   const char* labels[SCREEN_COUNT][4] = {
-    { "ON>" , "OFF>", on_network() ? "Dim>" : "Join>", "Next>"}, //HOME
-    { "Join>", "Leave>", "Identify>", "Next>"}, //NETWORK
-    { "SI7021>", "NTC>", "Refresh>", "Next>"}, //SENSORS
-    { "Up>", "Down>", "", "Next>"}, //SETTINGS
-    { "Up>", "Down>", "", "Next>"}, //DISPLAY
-    { "", "", "", "Next>"}, //INFO
+    { "ON>" , "OFF>", on_network() ? "Dim>" : "Join>", d_hint}, //HOME
+    { "Join>", "Leave>", "Identify>", d_hint}, //NETWORK
+    { "SI7021>", "NTC>", "Refresh>", d_hint}, //SENSORS
+    { "Up>", "Down>", "", d_hint}, //SETTINGS
+    { "Up>", "Down>", "", d_hint}, //DISPLAY
+    { "", "", "", d_hint}, //INFO
   };
 
   const uint16_t colors[SCREEN_COUNT][4] = {

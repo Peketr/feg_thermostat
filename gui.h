@@ -57,6 +57,7 @@ typedef struct {
   uint8_t dim_brightness;
   uint8_t settings_index;
   uint8_t display_settings_index;
+  bool btnd_previous;
   uint32_t uptime_ms;
   bool network_up;
   uint16_t pan_id;

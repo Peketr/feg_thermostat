@@ -106,13 +106,11 @@ static uint8_t max_valves = 2;
 static uint8_t brightness_pct = 100;
 static bool show_extra_sensor = false;
 static bool screen_dimmed = false;
-static uint8_t brightness_before_dim = 100;
 static uint8_t settings_index = SETTING_HYSTERESIS;
 
 static ui_state_t ui_state;
 
 static void save_settings(uint8_t settings_mask);
-static void report_settings(thermostat_settings_token_t *settings);
 
 static void save_settings(uint8_t settings_mask){
   thermostat_settings_token_t settings = {
@@ -293,7 +291,7 @@ static void render_current_screen(void){
   ui_state.control_uses_ntc = control_uses_ntc;
   ui_state.hysteresis = hysteresis_x100;
   ui_state.max_valves = max_valves;
-  ui_state.brightness = brightness_pct;
+  ui_state.brightness = screen_dimmed ? 20u : brightness_pct;
   ui_state.show_extra_sensor = show_extra_sensor;
   ui_state.settings_index = settings_index;
   ui_state.uptime_ms = now_ms();
@@ -565,12 +563,11 @@ static void handle_screen_button(const button_event_t *event){
 }
 
 static void handle_button_event(const button_event_t *event){
-  if (screen_dimmed) {
-    brightness_pct = brightness_before_dim;
+  if (screen_dimmed && event->id != BTN_NONE) {
+    sl_zigbee_app_debug_println("undimming screen");
     screen_dimmed = false;
   } else if (current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
-    brightness_before_dim = brightness_pct;
-    brightness_pct = (uint8_t)(brightness_pct * 20u / 100u);
+    sl_zigbee_app_debug_println("dimming screen");
     screen_dimmed = true;
   }
 
@@ -676,6 +673,17 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
     //Trick to trigger a thermostat tick to update the display and actuate heating.
     button_queue_push(BTN_NONE, false, false);
   }
+}
+
+bool sl_zigbee_af_pre_command_received_cb(sl_zigbee_af_cluster_command_t* cmd)
+{
+  if (cmd->apsFrame->clusterId == ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID && cmd->commandId == 0x00) {
+    sl_zigbee_app_debug_println("Received Dim Command");
+    screen_dimmed = true;
+    button_queue_push(BTN_NONE, false, false); // trigger a thermostat tick to update the display
+    return true; 
+  }
+  return false;
 }
 
 /** @brief Complete network steering.

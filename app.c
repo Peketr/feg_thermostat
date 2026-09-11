@@ -88,6 +88,7 @@ glib_context_t glib_context;
 #define UI_TICK_PERIOD_MS 250
 #define SELF_IDENTIFY_LENGTH_MS 2000
 #define SCREEN_TIMEOUT_MS 30000
+#define SCREEN_SHORT_TIMEOUT_MS 5000
 #define HYSTERESIS_MIN 10
 #define HYSTERESIS_MAX 200
 #define HYSTERESIS_STEP 10
@@ -156,6 +157,8 @@ static void load_settings(void){
   max_valves = settings.max_valves;
   brightness_pct = settings.brightness_pct;
   show_extra_sensor = settings.show_extra_sensor;
+
+  save_settings_to_attributes(&settings, 0xFF); // write all attributes to ensure they are in sync
 
 }
 
@@ -571,7 +574,9 @@ static void handle_button_event(const button_event_t *event){
     screen_dimmed = true;
   }
 
-  note_ui_activity();
+  if (event->id != BTN_NONE) { // source wasn't a button press, so don't reset the timeout
+    note_ui_activity(); 
+  }
 
   if (event->id == BTND) {
     cycle_screen(event->long_press);
@@ -618,6 +623,7 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           control_uses_ntc = (bool) *value;
+          current_screen = SCREEN_SENSORS; // force the user to see the change
         }
         break;
       case ZCL_THERMOSTAT_SETTINGS_HYSTERESIS_X100_ATTRIBUTE_ID:
@@ -625,6 +631,8 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           hysteresis_x100 = *value;
+          current_screen = SCREEN_SETTINGS; // force the user to see the change
+          settings_index = SETTING_HYSTERESIS; // force the user to see the change
         }
         break;
       case ZCL_THERMOSTAT_SETTINGS_MAX_VALVES_ATTRIBUTE_ID:
@@ -632,6 +640,8 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           max_valves = *value;
+          current_screen = SCREEN_SETTINGS; // force the user to see the change
+          settings_index = SETTING_MAX_VALVES; // force the user to see the change
         }
         break;
       case ZCL_THERMOSTAT_SETTINGS_BRIGHTNESS_PCT_ATTRIBUTE_ID:
@@ -639,6 +649,8 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           brightness_pct = *value;
+          current_screen = SCREEN_SETTINGS; // force the user to see the change
+          settings_index = SETTING_BRIGHTNESS; // force the user to see the change
         }
         break;
       case ZCL_THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR_ATTRIBUTE_ID:
@@ -646,11 +658,14 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           show_extra_sensor = (bool) *value;
+          current_screen = SCREEN_SETTINGS; // force the user to see the change
+          settings_index = SETTING_SHOW_EXTRA_SENSOR; // force the user to see the change
         }
         break;
       default:
         return;
     }
+    last_ui_activity_ms = now_ms() - SCREEN_TIMEOUT_MS + SCREEN_SHORT_TIMEOUT_MS; 
 
     sl_zigbee_app_debug_println("thermostat settings changed, reloading");
     save_settings(0xFF);

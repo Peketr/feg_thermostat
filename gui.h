@@ -13,18 +13,27 @@ typedef enum {
   SCREEN_NETWORK,
   SCREEN_SENSORS,
   SCREEN_SETTINGS,
+  SCREEN_DISPLAY,
   SCREEN_INFO,
   SCREEN_COUNT
 } gui_screen_t;
 
-// Settings screen rows, also used as the +/- adjust target.
+// Regular settings screen rows, also used as the +/- adjust target.
 typedef enum {
   SETTING_HYSTERESIS = 0,
   SETTING_MAX_VALVES,
-  SETTING_BRIGHTNESS,
   SETTING_SHOW_EXTRA_SENSOR,
-  SETTING_COUNT
+  SETTINGS_COUNT
 } gui_setting_t;
+
+// Display settings screen rows, kept separate from regular settings.
+typedef enum {
+  DISPLAY_SETTING_BRIGHTNESS = 0,
+  DISPLAY_SETTING_AUTO_DIM,
+  DISPLAY_SETTING_AUTO_DIM_TIMEOUT,
+  DISPLAY_SETTING_DIM_BRIGHTNESS,
+  DISPLAY_SETTINGS_COUNT
+} gui_display_setting_t;
 
 // Snapshot of everything the screens can render, so gui.c needs no sensor or
 // stack calls of its own.
@@ -43,7 +52,11 @@ typedef struct {
   uint8_t max_valves;
   uint8_t brightness;       // percent, scales every drawn colour
   bool show_extra_sensor;  // whether to show the extra sensor on the home screen
+  bool auto_dim_enabled;
+  uint16_t auto_dim_timeout_s;
+  uint8_t dim_brightness;
   uint8_t settings_index;
+  uint8_t display_settings_index;
   uint32_t uptime_ms;
   bool network_up;
   uint16_t pan_id;

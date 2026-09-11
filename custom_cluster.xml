@@ -75,6 +75,45 @@
       optional="false"
       reportable="true">extra sensor display</attribute>
 
+    <!-- auto_dim_enabled -->
+    <attribute
+      side="server"
+      code="0x0005"
+      define="THERMOSTAT_SETTINGS_AUTO_DIM_ENABLED"
+      type="BOOLEAN"
+      min="0x00"
+      max="0x01"
+      writable="true"
+      default="false"
+      optional="false"
+      reportable="true">automatic screen dimming</attribute>
+
+    <!-- auto_dim_timeout_s -->
+    <attribute
+      side="server"
+      code="0x0006"
+      define="THERMOSTAT_SETTINGS_AUTO_DIM_TIMEOUT_S"
+      type="INT16U"
+      min="0x0005"
+      max="0x0078"
+      writable="true"
+      default="0x001E"
+      optional="false"
+      reportable="true">automatic dimming timeout in seconds</attribute>
+
+    <!-- dim_brightness_pct -->
+    <attribute
+      side="server"
+      code="0x0007"
+      define="THERMOSTAT_SETTINGS_DIM_BRIGHTNESS_PCT"
+      type="INT8U"
+      min="0x05"
+      max="0x32"
+      writable="true"
+      default="0x14"
+      optional="false"
+      reportable="true">dimmed screen brightness</attribute>
+
     <!-- Dim screen -->
     <command
       source="client"

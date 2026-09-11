@@ -180,5 +180,29 @@ sl_zigbee_af_status_t save_settings_to_attributes(thermostat_settings_token_t *s
                                                          (uint8_t*)&settings->show_extra_sensor,
                                                          ZCL_BOOLEAN_ATTRIBUTE_TYPE);
   }
+  // Check if bit 5 is set in settings_mask, if so write auto_dim_enabled
+  if (settings_mask & 0x20) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_AUTO_DIM_ENABLED_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->auto_dim_enabled,
+                                                         ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+  }
+  // Check if bit 6 is set in settings_mask, if so write auto_dim_timeout_s
+  if (settings_mask & 0x40) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_AUTO_DIM_TIMEOUT_S_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->auto_dim_timeout_s,
+                                                         ZCL_INT16U_ATTRIBUTE_TYPE);
+  }
+  // Check if bit 7 is set in settings_mask, if so write dim_brightness_pct
+  if (settings_mask & 0x80) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_DIM_BRIGHTNESS_PCT_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->dim_brightness_pct,
+                                                         ZCL_INT8U_ATTRIBUTE_TYPE);
+  }
   return status;
 }

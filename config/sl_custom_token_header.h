@@ -29,6 +29,7 @@
  ******************************************************************************/
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef THERMOSTAT_SETTINGS_TOKEN_DEFINED
 #define THERMOSTAT_SETTINGS_TOKEN_DEFINED
@@ -39,6 +40,9 @@ typedef struct {
 	uint8_t max_valves;
 	uint8_t brightness_pct;
 	bool show_extra_sensor;
+	uint8_t auto_dim_enabled;
+	uint16_t auto_dim_timeout_s;
+	uint8_t dim_brightness_pct;
 } thermostat_settings_token_t;
 
 #define THERMOSTAT_SETTINGS_TOKEN \

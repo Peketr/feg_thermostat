@@ -95,6 +95,12 @@ glib_context_t glib_context;
 #define BRIGHTNESS_MIN 20
 #define BRIGHTNESS_MAX 100
 #define BRIGHTNESS_STEP 10
+#define AUTO_DIM_TIMEOUT_MIN_S 5
+#define AUTO_DIM_TIMEOUT_MAX_S 120
+#define AUTO_DIM_TIMEOUT_STEP_S 5
+#define DIM_BRIGHTNESS_MIN 5
+#define DIM_BRIGHTNESS_MAX 50
+#define DIM_BRIGHTNESS_STEP 5
 
 static volatile gui_screen_t current_screen = SCREEN_HOME;
 static uint32_t last_ui_activity_ms = 0;
@@ -105,8 +111,12 @@ static uint8_t hysteresis_x100 = 50;
 static uint8_t max_valves = 2;
 static uint8_t brightness_pct = 100;
 static bool show_extra_sensor = false;
+static bool auto_dim_enabled = false;
+static uint16_t auto_dim_timeout_s = 30;
+static uint8_t dim_brightness_pct = 20;
 static bool screen_dimmed = false;
 static uint8_t settings_index = SETTING_HYSTERESIS;
+static uint8_t display_settings_index = DISPLAY_SETTING_BRIGHTNESS;
 
 static ui_state_t ui_state;
 
@@ -118,7 +128,10 @@ static void save_settings(uint8_t settings_mask){
     .hysteresis_x100 = hysteresis_x100,
     .max_valves = max_valves,
     .brightness_pct = brightness_pct,
-    .show_extra_sensor = show_extra_sensor
+    .show_extra_sensor = show_extra_sensor,
+    .auto_dim_enabled = auto_dim_enabled,
+    .auto_dim_timeout_s = auto_dim_timeout_s,
+    .dim_brightness_pct = dim_brightness_pct
   };
 
   const sl_status_t status = sl_token_manager_set_data(THERMOSTAT_SETTINGS_TOKEN,
@@ -140,12 +153,17 @@ static void load_settings(void){
                                                         sizeof(settings));
   if (status != SL_ZIGBEE_ZCL_STATUS_SUCCESS
       || settings.control_uses_ntc > 1
+      || settings.auto_dim_enabled > 1
       || settings.hysteresis_x100 < HYSTERESIS_MIN
       || settings.hysteresis_x100 > HYSTERESIS_MAX
       || settings.max_valves < 1
       || settings.max_valves > 2
       || settings.brightness_pct < BRIGHTNESS_MIN
-      || settings.brightness_pct > BRIGHTNESS_MAX) {
+      || settings.brightness_pct > BRIGHTNESS_MAX
+      || settings.auto_dim_timeout_s < AUTO_DIM_TIMEOUT_MIN_S
+      || settings.auto_dim_timeout_s > AUTO_DIM_TIMEOUT_MAX_S
+      || settings.dim_brightness_pct < DIM_BRIGHTNESS_MIN
+      || settings.dim_brightness_pct > DIM_BRIGHTNESS_MAX) {
         sl_zigbee_app_debug_println("settings load error: 0x%x", status);
     return;
   }
@@ -155,6 +173,9 @@ static void load_settings(void){
   max_valves = settings.max_valves;
   brightness_pct = settings.brightness_pct;
   show_extra_sensor = settings.show_extra_sensor;
+  auto_dim_enabled = settings.auto_dim_enabled;
+  auto_dim_timeout_s = settings.auto_dim_timeout_s;
+  dim_brightness_pct = settings.dim_brightness_pct;
 
   save_settings_to_attributes(&settings, 0xFF); // write all attributes to ensure they are in sync
 
@@ -291,9 +312,13 @@ static void render_current_screen(void){
   ui_state.control_uses_ntc = control_uses_ntc;
   ui_state.hysteresis = hysteresis_x100;
   ui_state.max_valves = max_valves;
-  ui_state.brightness = screen_dimmed ? 20u : brightness_pct;
+  ui_state.brightness = screen_dimmed ? dim_brightness_pct : brightness_pct;
   ui_state.show_extra_sensor = show_extra_sensor;
+  ui_state.auto_dim_enabled = auto_dim_enabled;
+  ui_state.auto_dim_timeout_s = auto_dim_timeout_s;
+  ui_state.dim_brightness = dim_brightness_pct;
   ui_state.settings_index = settings_index;
+  ui_state.display_settings_index = display_settings_index;
   ui_state.uptime_ms = now_ms();
   ui_state.network_up = on_network();
 
@@ -391,12 +416,18 @@ void thermostat_tick(void){
 // Runs at a fixed rate while a non-home screen is showing, so those screens
 // stay current and can time out.
 void ui_tick(void){
+  if (!screen_dimmed && auto_dim_enabled
+      && now_ms() - last_ui_activity_ms >= (uint32_t)auto_dim_timeout_s * 1000u) {
+    screen_dimmed = true;
+  }
+
   if (current_screen != SCREEN_HOME
       && now_ms() - last_ui_activity_ms > SCREEN_TIMEOUT_MS) {
     current_screen = SCREEN_HOME;
   }
 
-  const bool keep_running = current_screen != SCREEN_HOME;
+  const bool keep_running = current_screen != SCREEN_HOME
+                            || (auto_dim_enabled && !screen_dimmed);
 
   render_current_screen();
 
@@ -425,6 +456,9 @@ void app_init(){
   
   oled_init(&glib_context);
   last_ui_activity_ms = now_ms();
+  if (auto_dim_enabled) {
+    arm_ui_tick();
+  }
   
   sl_zigbee_af_event_set_delay_ms(&thermostat_tick_event, 2000);
 
@@ -439,11 +473,18 @@ static void cycle_screen(bool backwards){
   current_screen = backwards
                    ? (gui_screen_t)((screen + SCREEN_COUNT - 1) % SCREEN_COUNT)
                    : (gui_screen_t)((screen + 1) % SCREEN_COUNT);
+  if (current_screen == SCREEN_DISPLAY) {
+    if (display_settings_index >= DISPLAY_SETTINGS_COUNT) {
+      display_settings_index = DISPLAY_SETTING_BRIGHTNESS;
+    }
+  } else if (current_screen == SCREEN_SETTINGS && settings_index >= SETTINGS_COUNT) {
+    settings_index = SETTING_HYSTERESIS;
+  }
   sl_zigbee_app_debug_println("screen: %d", current_screen);
 }
 
 static void adjust_setting(int8_t direction){
-  if (settings_index == SETTING_HYSTERESIS) {
+  if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_HYSTERESIS) {
     int16_t value = hysteresis_x100 + direction * HYSTERESIS_STEP;
     if (value < HYSTERESIS_MIN) {
       value = HYSTERESIS_MIN;
@@ -451,7 +492,7 @@ static void adjust_setting(int8_t direction){
       value = HYSTERESIS_MAX;
     }
     hysteresis_x100 = value;
-  } else if (settings_index == SETTING_BRIGHTNESS) {
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_BRIGHTNESS) {
     int16_t value = brightness_pct + direction * BRIGHTNESS_STEP;
     if (value < BRIGHTNESS_MIN) {
       value = BRIGHTNESS_MIN;
@@ -459,22 +500,46 @@ static void adjust_setting(int8_t direction){
       value = BRIGHTNESS_MAX;
     }
     brightness_pct = (uint8_t)value;
-  } else if (settings_index == SETTING_SHOW_EXTRA_SENSOR) {
+  } else if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_SHOW_EXTRA_SENSOR) {
     show_extra_sensor = !show_extra_sensor;
-  }
-  else {
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_AUTO_DIM) {
+    auto_dim_enabled = !auto_dim_enabled;
+    screen_dimmed = false;
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_AUTO_DIM_TIMEOUT) {
+    int16_t value = auto_dim_timeout_s + direction * AUTO_DIM_TIMEOUT_STEP_S;
+    if (value < AUTO_DIM_TIMEOUT_MIN_S) {
+      value = AUTO_DIM_TIMEOUT_MIN_S;
+    } else if (value > AUTO_DIM_TIMEOUT_MAX_S) {
+      value = AUTO_DIM_TIMEOUT_MAX_S;
+    }
+    auto_dim_timeout_s = (uint16_t)value;
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_DIM_BRIGHTNESS) {
+    int16_t value = dim_brightness_pct + direction * DIM_BRIGHTNESS_STEP;
+    if (value < DIM_BRIGHTNESS_MIN) {
+      value = DIM_BRIGHTNESS_MIN;
+    } else if (value > DIM_BRIGHTNESS_MAX) {
+      value = DIM_BRIGHTNESS_MAX;
+    }
+    dim_brightness_pct = (uint8_t)value;
+  } else if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_MAX_VALVES) {
     max_valves = direction > 0 ? 2 : 1;
   }
 
   uint8_t settings_mask = 0;
-  if (settings_index == SETTING_HYSTERESIS) {
+  if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_HYSTERESIS) {
     settings_mask |= 0x02;
-  } else if (settings_index == SETTING_BRIGHTNESS) {
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_BRIGHTNESS) {
     settings_mask |= 0x08;
-  } else if (settings_index == SETTING_SHOW_EXTRA_SENSOR) {
+  } else if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_SHOW_EXTRA_SENSOR) {
     settings_mask |= 0x10;
-  } else { // SETTING_MAX_VALVES
+  } else if (current_screen == SCREEN_SETTINGS && settings_index == SETTING_MAX_VALVES) {
     settings_mask |= 0x04;
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_AUTO_DIM) {
+    settings_mask |= 0x20;
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_AUTO_DIM_TIMEOUT) {
+    settings_mask |= 0x40;
+  } else if (current_screen == SCREEN_DISPLAY && display_settings_index == DISPLAY_SETTING_DIM_BRIGHTNESS) {
+    settings_mask |= 0x80;
   }
   save_settings(settings_mask);
 }
@@ -511,9 +576,24 @@ static void handle_screen_button(const button_event_t *event){
 
     case SCREEN_SETTINGS:
       if (event->id == BTNA) {
-        settings_index = (settings_index + SETTING_COUNT - 1) % SETTING_COUNT;
+        settings_index = (settings_index + SETTINGS_COUNT - 1) % SETTINGS_COUNT;
       } else if (event->id == BTNB) {
-        settings_index = (settings_index + 1) % SETTING_COUNT;
+        settings_index = (settings_index + 1) % SETTINGS_COUNT;
+      } else if (event->id == BTNP) {
+        adjust_setting(1);
+        trigger_thermostat_tick();
+      } else if (event->id == BTNM) {
+        adjust_setting(-1);
+        trigger_thermostat_tick();
+      }
+      break;
+
+    case SCREEN_DISPLAY:
+      if (event->id == BTNA) {
+        display_settings_index = (display_settings_index + DISPLAY_SETTINGS_COUNT - 1)
+                                  % DISPLAY_SETTINGS_COUNT;
+      } else if (event->id == BTNB) {
+        display_settings_index = (display_settings_index + 1) % DISPLAY_SETTINGS_COUNT;
       } else if (event->id == BTNP) {
         adjust_setting(1);
         trigger_thermostat_tick();
@@ -566,13 +646,14 @@ static void handle_button_event(const button_event_t *event){
   if (screen_dimmed && event->id != BTN_NONE) {
     sl_zigbee_app_debug_println("undimming screen");
     screen_dimmed = false;
-  } else if (current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
+  } else if (!auto_dim_enabled && current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
     sl_zigbee_app_debug_println("dimming screen");
     screen_dimmed = true;
   }
 
   if (event->id != BTN_NONE) { // source wasn't a button press, so don't reset the timeout
     note_ui_activity(); 
+    screen_dimmed = false;
   }
 
   if (event->id == BTND) {
@@ -581,7 +662,7 @@ static void handle_button_event(const button_event_t *event){
     handle_screen_button(event);
   }
 
-  if (current_screen != SCREEN_HOME) {
+  if (current_screen != SCREEN_HOME || auto_dim_enabled) {
     arm_ui_tick();
   } else {
     trigger_thermostat_tick();
@@ -646,8 +727,8 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           return;
         } else {
           brightness_pct = *value;
-          current_screen = SCREEN_SETTINGS; // force the user to see the change
-          settings_index = SETTING_BRIGHTNESS; // force the user to see the change
+          current_screen = SCREEN_DISPLAY; // force the user to see the change
+          display_settings_index = DISPLAY_SETTING_BRIGHTNESS; // force the user to see the change
         }
         break;
       case ZCL_THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR_ATTRIBUTE_ID:
@@ -657,6 +738,34 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
           show_extra_sensor = (bool) *value;
           current_screen = SCREEN_SETTINGS; // force the user to see the change
           settings_index = SETTING_SHOW_EXTRA_SENSOR; // force the user to see the change
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_AUTO_DIM_ENABLED_ATTRIBUTE_ID:
+        if ((bool) *value == auto_dim_enabled) {
+          return;
+        } else {
+          auto_dim_enabled = (bool) *value;
+          screen_dimmed = false;
+          current_screen = SCREEN_DISPLAY; // force the user to see the change
+          display_settings_index = DISPLAY_SETTING_AUTO_DIM; // force the user to see the change
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_AUTO_DIM_TIMEOUT_S_ATTRIBUTE_ID:
+        if (*(uint16_t *)value == auto_dim_timeout_s) {
+          return;
+        } else {
+          memcpy(&auto_dim_timeout_s, value, sizeof(auto_dim_timeout_s));
+          current_screen = SCREEN_DISPLAY; // force the user to see the change
+          display_settings_index = DISPLAY_SETTING_AUTO_DIM_TIMEOUT; // force the user to see the change
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_DIM_BRIGHTNESS_PCT_ATTRIBUTE_ID:
+        if (*value == dim_brightness_pct) {
+          return;
+        } else {
+          dim_brightness_pct = *value;
+          current_screen = SCREEN_DISPLAY; // force the user to see the change
+          display_settings_index = DISPLAY_SETTING_DIM_BRIGHTNESS; // force the user to see the change
         }
         break;
       default:

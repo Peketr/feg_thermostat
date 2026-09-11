@@ -93,6 +93,7 @@ static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen, const ui
     { "Join>", "Leave>", "Identify>", "Next>"}, //NETWORK
     { "SI7021>", "NTC>", "Refresh>", "Next>"}, //SENSORS
     { "Up>", "Down>", "", "Next>"}, //SETTINGS
+    { "Up>", "Down>", "", "Next>"}, //DISPLAY
     { "", "", "", "Next>"}, //INFO
   };
 
@@ -101,6 +102,7 @@ static void draw_button_hints(glib_context_t *ctx, gui_screen_t screen, const ui
     { s->network_up ? COLOR_BLACK : COLOR_GREY, s->network_up ? COLOR_GREY : COLOR_BLACK, COLOR_GREY, COLOR_GREY}, //NETWORK
     { s->control_uses_ntc ? COLOR_GREY : COLOR_GREEN, s->control_uses_ntc ? COLOR_GREEN : COLOR_GREY, COLOR_GREY, COLOR_GREY}, //SENSORS
     { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //SETTINGS
+    { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //DISPLAY
     { COLOR_GREY,COLOR_GREY,COLOR_GREY,COLOR_GREY}, //INFO
   };
 
@@ -295,12 +297,33 @@ static void draw_settings_screen(glib_context_t *ctx, const ui_state_t *s){
   snprintf(buf, sizeof(buf), "%c Valves  %u", s->settings_index == SETTING_MAX_VALVES ? '>' : ' ', s->max_valves);
   draw_line(ctx, 3, buf);
 
-  glib_set_text_color(ctx, dim(s->settings_index == SETTING_BRIGHTNESS ? COLOR_GREEN : COLOR_WHITE));
-  snprintf(buf, sizeof(buf), "%c Bright  %u %%", s->settings_index == SETTING_BRIGHTNESS ? '>' : ' ', s->brightness);
-  draw_line(ctx, 5, buf);
-
   glib_set_text_color(ctx, dim(s->settings_index == SETTING_SHOW_EXTRA_SENSOR ? COLOR_GREEN : COLOR_WHITE));
   snprintf(buf, sizeof(buf), "%c AuxTemp %s", s->settings_index == SETTING_SHOW_EXTRA_SENSOR ? '>' : ' ', s->show_extra_sensor ? "ON" : "OFF");
+  draw_line(ctx, 5, buf);
+
+  static const char *const hints[] = { "+/-: adjust" };
+  draw_hints(ctx, hints, 1);
+}
+
+static void draw_display_screen(glib_context_t *ctx, const ui_state_t *s){
+  char buf[TEXT_COLS + 1];
+
+  draw_header(ctx, "DISPLAY", SCREEN_DISPLAY, s);
+
+  glib_set_text_color(ctx, dim(s->display_settings_index == DISPLAY_SETTING_BRIGHTNESS ? COLOR_GREEN : COLOR_WHITE));
+  snprintf(buf, sizeof(buf), "%c Bright  %u %%", s->display_settings_index == DISPLAY_SETTING_BRIGHTNESS ? '>' : ' ', s->brightness);
+  draw_line(ctx, 1, buf);
+
+  glib_set_text_color(ctx, dim(s->display_settings_index == DISPLAY_SETTING_AUTO_DIM ? COLOR_GREEN : COLOR_WHITE));
+  snprintf(buf, sizeof(buf), "%c AutoDim %s", s->display_settings_index == DISPLAY_SETTING_AUTO_DIM ? '>' : ' ', s->auto_dim_enabled ? "ON" : "OFF");
+  draw_line(ctx, 3, buf);
+
+  glib_set_text_color(ctx, dim(s->display_settings_index == DISPLAY_SETTING_AUTO_DIM_TIMEOUT ? COLOR_GREEN : COLOR_WHITE));
+  snprintf(buf, sizeof(buf), "%c Timeout %us", s->display_settings_index == DISPLAY_SETTING_AUTO_DIM_TIMEOUT ? '>' : ' ', s->auto_dim_timeout_s);
+  draw_line(ctx, 5, buf);
+
+  glib_set_text_color(ctx, dim(s->display_settings_index == DISPLAY_SETTING_DIM_BRIGHTNESS ? COLOR_GREEN : COLOR_WHITE));
+  snprintf(buf, sizeof(buf), "%c DimBrght %u%%", s->display_settings_index == DISPLAY_SETTING_DIM_BRIGHTNESS ? '>' : ' ', s->dim_brightness);
   draw_line(ctx, 7, buf);
 
   static const char *const hints[] = { "+/-: adjust" };
@@ -345,6 +368,9 @@ void gui_draw(glib_context_t *glib_context, gui_screen_t screen, const ui_state_
       break;
     case SCREEN_SETTINGS:
       draw_settings_screen(glib_context, state);
+      break;
+    case SCREEN_DISPLAY:
+      draw_display_screen(glib_context, state);
       break;
     case SCREEN_INFO:
       draw_info_screen(glib_context, state);

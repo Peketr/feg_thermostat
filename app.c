@@ -308,7 +308,7 @@ static uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool e
 
 // Refreshes the fields that change faster than the 30s sensor tick, then draws.
 static void render_current_screen(void){
-  load_settings();
+  //load_settings();
   ui_state.control_uses_ntc = control_uses_ntc;
   ui_state.hysteresis = hysteresis_x100;
   ui_state.max_valves = max_valves;
@@ -348,9 +348,6 @@ static void arm_ui_tick(void){
   sl_zigbee_af_event_set_active(&ui_tick_event);
 }
 
-static void note_ui_activity(void){
-  last_ui_activity_ms = now_ms();
-}
 
 void thermostat_tick(void){
   sl_status_t sc;
@@ -646,14 +643,13 @@ static void handle_button_event(const button_event_t *event){
   if (screen_dimmed && event->id != BTN_NONE) {
     sl_zigbee_app_debug_println("undimming screen");
     screen_dimmed = false;
-  } else if (!auto_dim_enabled && current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
+  } else if (current_screen == SCREEN_HOME && event->id == BTNC && on_network()) {
     sl_zigbee_app_debug_println("dimming screen");
     screen_dimmed = true;
   }
 
   if (event->id != BTN_NONE) { // source wasn't a button press, so don't reset the timeout
-    note_ui_activity(); 
-    screen_dimmed = false;
+    last_ui_activity_ms = now_ms();
   }
 
   if (event->id == BTND) {

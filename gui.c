@@ -164,6 +164,7 @@ static void draw_home_screen(glib_context_t *glib_context, const ui_state_t *s){
   }
 
   if (!s->heating_enabled){
+    set_color(glib_context, COLOR_WHITE);
     glib_draw_string(glib_context, "Off", 0, 0);
   } else if (s->open_valves == 0) {
     set_color(glib_context, COLOR_BLUE);

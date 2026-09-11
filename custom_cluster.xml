@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configurator>
+
+  <cluster>
+    <name>Thermostat Settings</name>
+    <domain>HVAC</domain>
+    <description>
+      Custom thermostat settings cluster.
+    </description>
+    <code>0xFAAC</code>
+    <define>THERMOSTAT_SETTINGS_CLUSTER</define>
+
+    <!-- control_uses_ntc -->
+    <attribute
+      side="server"
+      code="0x0000"
+      define="THERMOSTAT_SETTINGS_CONTROL_USES_NTC"
+      type="BOOLEAN"
+      min="0x00"
+      max="0x01"
+      writable="true"
+      default="false"
+      optional="false"
+      reportable="true">use NTC for control</attribute>
+
+    <!-- hysteresis_x100 -->
+    <attribute
+      side="server"
+      code="0x0001"
+      define="THERMOSTAT_SETTINGS_HYSTERESIS_X100"
+      type="INT8U"
+      min="0x0A"
+      max="0xC8"
+      writable="true"
+      default="0x00"
+      optional="false"
+      reportable="true">Thermostat hysteresis</attribute>
+
+    <!-- max_valves -->
+    <attribute
+      side="server"
+      code="0x0002"
+      define="THERMOSTAT_SETTINGS_MAX_VALVES"
+      type="INT8U"
+      min="0x01"
+      max="0x02"
+      writable="true"
+      default="0x00"
+      optional="false"
+      reportable="true">Maximum open valves.</attribute>
+
+    <!-- brightness_pct -->
+    <attribute
+      side="server"
+      code="0x0003"
+      define="THERMOSTAT_SETTINGS_BRIGHTNESS_PCT"
+      type="INT8U"
+      min="0x14"
+      max="0x64"
+      writable="true"
+      default="0x64"
+      optional="false"
+      reportable="true">Screen brightness</attribute>
+
+    <!-- show_extra_sensor -->
+    <attribute
+      side="server"
+      code="0x0004"
+      define="THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR"
+      type="BOOLEAN"
+      min="0x00"
+      max="0x01"
+      writable="true"
+      default="false"
+      optional="false"
+      reportable="true">extra sensor display</attribute>
+
+    <!-- Dim screen -->
+    <command
+      source="client"
+      code="0x00"
+      name="DimScreen"
+      optional="false">
+      <description>
+        Dims the thermostat screen.
+      </description>
+    </command>
+
+  </cluster>
+
+</configurator>

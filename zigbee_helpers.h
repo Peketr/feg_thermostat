@@ -14,6 +14,8 @@
 
 #define THERMOSTAT_ENDPOINT 1
 
+#include "sl_custom_token_header.h"
+
 sl_zigbee_af_status_t get_target(int16_t *target_temp,uint8_t *system_mode);
 void update_measurement(uint32_t rh_data, int32_t temp_data);
 sl_zigbee_af_status_t set_target_temp(int16_t target_temp);
@@ -22,5 +24,8 @@ sl_zigbee_af_status_t set_system_mode(bool enable_heating);
 sl_zigbee_af_status_t update_running_state(uint8_t open_valves);
 
 bool on_network();
+
+//sl_zigbee_af_status_t load_settings_from_attributes(thermostat_settings_token_t *settings);
+sl_zigbee_af_status_t save_settings_to_attributes(thermostat_settings_token_t *settings, uint8_t settings_mask);
 
 #endif //ZIGBEE_HELPERS_H

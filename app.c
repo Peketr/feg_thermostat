@@ -28,7 +28,6 @@
 #include "sl_sleeptimer_config.h"
 #include "sl_token_manager_api.h"
 #include "sl_token_manager_defines.h"
-#include "sl_custom_token_header.h"
 
 #include <string.h>
 
@@ -101,7 +100,7 @@ static uint32_t last_ui_activity_ms = 0;
 
 // User settings.
 static bool control_uses_ntc = false;
-static int16_t hysteresis_x100 = 50;
+static uint8_t hysteresis_x100 = 50;
 static uint8_t max_valves = 2;
 static uint8_t brightness_pct = 100;
 static bool show_extra_sensor = false;
@@ -111,7 +110,10 @@ static uint8_t settings_index = SETTING_HYSTERESIS;
 
 static ui_state_t ui_state;
 
-static void save_settings(void){
+static void save_settings(uint8_t settings_mask);
+static void report_settings(thermostat_settings_token_t *settings);
+
+static void save_settings(uint8_t settings_mask){
   thermostat_settings_token_t settings = {
     .control_uses_ntc = control_uses_ntc,
     .hysteresis_x100 = hysteresis_x100,
@@ -123,17 +125,21 @@ static void save_settings(void){
   const sl_status_t status = sl_token_manager_set_data(THERMOSTAT_SETTINGS_TOKEN,
                                                         &settings,
                                                         sizeof(settings));
-  if (status != SL_STATUS_OK) {
+  save_settings_to_attributes(&settings, settings_mask);
+  if (status != SL_ZIGBEE_ZCL_STATUS_SUCCESS) {
     sl_zigbee_app_debug_println("settings save error: 0x%x", status);
   }
+
+
 }
 
 static void load_settings(void){
   thermostat_settings_token_t settings;
+  /*sl_zigbee_af_status_t status = load_settings_from_attributes(&settings);*/
   const sl_status_t status = sl_token_manager_get_data(THERMOSTAT_SETTINGS_TOKEN,
                                                         &settings,
                                                         sizeof(settings));
-  if (status != SL_STATUS_OK
+  if (status != SL_ZIGBEE_ZCL_STATUS_SUCCESS
       || settings.control_uses_ntc > 1
       || settings.hysteresis_x100 < HYSTERESIS_MIN
       || settings.hysteresis_x100 > HYSTERESIS_MAX
@@ -141,6 +147,7 @@ static void load_settings(void){
       || settings.max_valves > 2
       || settings.brightness_pct < BRIGHTNESS_MIN
       || settings.brightness_pct > BRIGHTNESS_MAX) {
+        sl_zigbee_app_debug_println("settings load error: 0x%x", status);
     return;
   }
 
@@ -149,6 +156,7 @@ static void load_settings(void){
   max_valves = settings.max_valves;
   brightness_pct = settings.brightness_pct;
   show_extra_sensor = settings.show_extra_sensor;
+
 }
 
 static uint8_t fetch_btn_id(const sl_button_t *handle){
@@ -278,6 +286,7 @@ static uint8_t actuate_heating(int16_t current_temp, int16_t target_temp, bool e
 
 // Refreshes the fields that change faster than the 30s sensor tick, then draws.
 static void render_current_screen(void){
+  load_settings();
   ui_state.control_uses_ntc = control_uses_ntc;
   ui_state.hysteresis = hysteresis_x100;
   ui_state.max_valves = max_valves;
@@ -456,7 +465,17 @@ static void adjust_setting(int8_t direction){
     max_valves = direction > 0 ? 2 : 1;
   }
 
-  save_settings();
+  uint8_t settings_mask = 0;
+  if (settings_index == SETTING_HYSTERESIS) {
+    settings_mask |= 0x02;
+  } else if (settings_index == SETTING_BRIGHTNESS) {
+    settings_mask |= 0x08;
+  } else if (settings_index == SETTING_SHOW_EXTRA_SENSOR) {
+    settings_mask |= 0x10;
+  } else { // SETTING_MAX_VALVES
+    settings_mask |= 0x04;
+  }
+  save_settings(settings_mask);
 }
 
 // Buttons other than D are remapped per screen; see the screen hints in gui.c.
@@ -485,7 +504,7 @@ static void handle_screen_button(const button_event_t *event){
       } else if (event->id == BTNP || event->id == BTNM) {
         control_uses_ntc = !control_uses_ntc;
       }
-      save_settings();
+      save_settings(0x01);
       trigger_thermostat_tick();
       break;
 
@@ -571,6 +590,7 @@ void app_process_action(void)
 {
   button_event_t event;
   while (button_queue_pop(&event)) {
+    load_settings();
     handle_button_event(&event);
   }
 }
@@ -588,7 +608,54 @@ void sl_zigbee_af_post_attribute_change_cb(int8u endpoint,
   UNUSED_VAR(manufacturerCode);
   UNUSED_VAR(type);
   UNUSED_VAR(size);
-  UNUSED_VAR(value);
+
+  sl_zigbee_app_debug_println("attribute change: endpoint %d, cluster 0x%04X, attribute 0x%04X, mask 0x%02X", endpoint, clusterId, attributeId, mask);
+
+  if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID) {
+    switch (attributeId) {
+      case ZCL_THERMOSTAT_SETTINGS_CONTROL_USES_NTC_ATTRIBUTE_ID:
+        if ((bool) *value == control_uses_ntc) {
+          return;
+        } else {
+          control_uses_ntc = (bool) *value;
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_HYSTERESIS_X100_ATTRIBUTE_ID:
+        if (*value == hysteresis_x100) {
+          return;
+        } else {
+          hysteresis_x100 = *value;
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_MAX_VALVES_ATTRIBUTE_ID:
+        if (*value == max_valves) {
+          return;
+        } else {
+          max_valves = *value;
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_BRIGHTNESS_PCT_ATTRIBUTE_ID:
+        if (*value == brightness_pct) {
+          return;
+        } else {
+          brightness_pct = *value;
+        }
+        break;
+      case ZCL_THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR_ATTRIBUTE_ID:
+        if ((bool) *value == show_extra_sensor) {
+          return;
+        } else {
+          show_extra_sensor = (bool) *value;
+        }
+        break;
+      default:
+        return;
+    }
+
+    sl_zigbee_app_debug_println("thermostat settings changed, reloading");
+    save_settings(0xFF);
+    button_queue_push(BTN_NONE, false, false);
+  }
 
   if (endpoint == THERMOSTAT_ENDPOINT && clusterId == ZCL_THERMOSTAT_CLUSTER_ID && (attributeId== ZCL_SYSTEM_MODE_ATTRIBUTE_ID || attributeId == ZCL_OCCUPIED_HEATING_SETPOINT_ATTRIBUTE_ID)){
     //Trick to trigger a thermostat tick to update the display and actuate heating.

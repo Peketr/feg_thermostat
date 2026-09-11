@@ -35,7 +35,7 @@
 
 typedef struct {
 	uint8_t control_uses_ntc;
-	int16_t hysteresis_x100;
+	uint8_t hysteresis_x100;
 	uint8_t max_valves;
 	uint8_t brightness_pct;
 	bool show_extra_sensor;

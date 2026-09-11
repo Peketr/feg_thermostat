@@ -1,6 +1,7 @@
 
 #include "zigbee_helpers.h"
 
+
 extern bool retrigger;
 extern bool steering;
 
@@ -105,4 +106,79 @@ sl_zigbee_af_status_t update_running_state(uint8_t open_valves){
 
 bool on_network(){
    return sl_zigbee_stack_is_up() && sl_zigbee_network_state() == SL_ZIGBEE_JOINED_NETWORK;
+}
+/*
+sl_zigbee_af_status_t load_settings_from_attributes(thermostat_settings_token_t *settings){
+  sl_zigbee_af_status_t status;
+  status = sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_CONTROL_USES_NTC_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->control_uses_ntc,
+                                                         sizeof(settings->control_uses_ntc));
+  status |= sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_HYSTERESIS_X100_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->hysteresis_x100,
+                                                         sizeof(settings->hysteresis_x100));
+  status |= sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_MAX_VALVES_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->max_valves,
+                                                         sizeof(settings->max_valves));
+  status |= sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_BRIGHTNESS_PCT_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->brightness_pct,
+                                                         sizeof(settings->brightness_pct));
+  status |= sl_zigbee_af_read_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->show_extra_sensor,
+                                                         sizeof(settings->show_extra_sensor));
+  return status;
+}
+*/
+sl_zigbee_af_status_t save_settings_to_attributes(thermostat_settings_token_t *settings, uint8_t settings_mask){
+  sl_zigbee_af_status_t status = SL_ZIGBEE_ZCL_STATUS_SUCCESS;
+  //Check if bit 0 is set in settings_mask, if so write control_uses_ntc
+  if (settings_mask & 0x01) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_CONTROL_USES_NTC_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->control_uses_ntc,
+                                                         ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+  }
+  //Check if bit 1 is set in settings_mask, if so write hysteresis_x100
+  if (settings_mask & 0x02) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_HYSTERESIS_X100_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->hysteresis_x100,
+                                                         ZCL_INT8U_ATTRIBUTE_TYPE);
+  }
+  //Check if bit 2 is set in settings_mask, if so write max_valves
+  if (settings_mask & 0x04) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_MAX_VALVES_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->max_valves,
+                                                         ZCL_INT8U_ATTRIBUTE_TYPE);
+  }
+  //Check if bit 3 is set in settings_mask, if so write brightness_pct
+  if (settings_mask & 0x08) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_BRIGHTNESS_PCT_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->brightness_pct,
+                                                         ZCL_INT8U_ATTRIBUTE_TYPE);
+  }
+  //Check if bit 4 is set in settings_mask, if so write show_extra_sensor
+  if (settings_mask & 0x10) {
+    status |= sl_zigbee_af_write_server_attribute(THERMOSTAT_ENDPOINT,
+                                                         ZCL_THERMOSTAT_SETTINGS_CLUSTER_ID,
+                                                         ZCL_THERMOSTAT_SETTINGS_SHOW_EXTRA_SENSOR_ATTRIBUTE_ID,
+                                                         (uint8_t*)&settings->show_extra_sensor,
+                                                         ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+  }
+  return status;
 }
